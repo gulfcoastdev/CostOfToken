@@ -1,0 +1,192 @@
+import * as cheerio from 'cheerio'
+import { cleanText } from '../normalize.ts'
+
+/**
+ * A generic reader for HTML pricing tables.
+ *
+ * Providers lay pricing out in incompatible ways, so this normalises the two
+ * structural quirks that actually matter:
+ *
+ *  1. Multi-row headers with colspans. OpenAI groups columns under "Short
+ *     context" / "Long context" spanning four sub-columns each. Header rows are
+ *     expanded across their colspan and joined top-to-bottom, so that table
+ *     yields flat headers like "Short context Input" and "Long context Output".
+ *  2. Transposed tables. Google publishes one table per model with the price
+ *     labels down the first column, so `caption` (the nearest preceding
+ *     heading) carries the model name.
+ *
+ * Extractors then locate columns by regex against header text rather than by
+ * index, so a provider inserting a column doesn't shift everything by one.
+ */
+
+export interface HtmlTable {
+  /** Nearest enclosing heading, or <caption>. */
+  caption: string
+  /**
+   * Heading breadcrumb for the table, nearest first — e.g.
+   * ["Standard", "Gemini 3 Pro", "Models"].
+   *
+   * Essential where the nearest heading is a pricing *tier* rather than the
+   * model: Google nests four tier tables ("Standard", "Batch", "Flex",
+   * "Priority") under each model's heading, so the model name is one or more
+   * levels further up.
+   */
+  captionPath: string[]
+  /** Flattened header labels, one per column, colspans expanded. */
+  headers: string[]
+  rows: string[][]
+}
+
+type AnyCheerio = cheerio.Cheerio<never>
+
+export function parseTables(html: string): HtmlTable[] {
+  const $ = cheerio.load(html)
+  const tables: HtmlTable[] = []
+
+  // Walk headings and tables in document order, maintaining a heading stack,
+  // so each table gets the full h1..h6 breadcrumb enclosing it.
+  const stack: Array<{ level: number; text: string }> = []
+
+  for (const node of $('h1, h2, h3, h4, h5, h6, table').toArray()) {
+    const tag = node.tagName?.toLowerCase()
+    if (!tag) continue
+
+    if (tag === 'table') {
+      const $table = $(node) as unknown as AnyCheerio
+      const parsed = parseOneTable($, $table, [...stack].reverse().map((s) => s.text))
+      if (parsed) tables.push(parsed)
+      continue
+    }
+
+    const level = Number.parseInt(tag.slice(1), 10)
+    if (!Number.isFinite(level)) continue
+    while (stack.length > 0 && stack[stack.length - 1].level >= level) stack.pop()
+    stack.push({ level, text: cleanText($(node).text()) })
+  }
+
+  return tables
+}
+
+function parseOneTable(
+  $: cheerio.CheerioAPI,
+  $table: AnyCheerio,
+  headingPath: string[],
+): HtmlTable | null {
+  const allRows: Array<{ cells: string[]; allHeaderCells: boolean; inThead: boolean }> = []
+
+  $table.find('tr').each((_i, tr) => {
+    const $tr = $(tr)
+    const cells: string[] = []
+    let cellCount = 0
+    let headerCellCount = 0
+
+    $tr.find('th, td').each((_j, cellEl) => {
+      const $cell = $(cellEl)
+      const text = cellText($, $cell as unknown as AnyCheerio)
+      const colspan = Math.min(Number.parseInt($cell.attr('colspan') ?? '1', 10) || 1, 32)
+      for (let k = 0; k < colspan; k++) cells.push(text)
+      cellCount++
+      if (cellEl.tagName?.toLowerCase() === 'th') headerCellCount++
+    })
+
+    if (cells.length === 0) return
+
+    allRows.push({
+      cells,
+      allHeaderCells: cellCount > 0 && headerCellCount === cellCount,
+      inThead: $tr.closest('thead').length > 0,
+    })
+  })
+
+  if (allRows.length === 0) return null
+
+  // Leading rows that are entirely <th> (or live in <thead>) form the header
+  // stack. Always take at least one row so a <td>-only table still parses.
+  let headerRowCount = 0
+  while (
+    headerRowCount < allRows.length &&
+    (allRows[headerRowCount].inThead || allRows[headerRowCount].allHeaderCells)
+  ) {
+    headerRowCount++
+  }
+  if (headerRowCount === 0) headerRowCount = 1
+
+  const headerRows = allRows.slice(0, headerRowCount)
+  const bodyRows = allRows.slice(headerRowCount).map((r) => r.cells)
+
+  const width = Math.max(...allRows.map((r) => r.cells.length))
+  const headers: string[] = []
+  for (let col = 0; col < width; col++) {
+    const parts: string[] = []
+    for (const row of headerRows) {
+      const text = row.cells[col]
+      // Skip blanks and repeats — a group label spanning 4 columns shouldn't
+      // produce "Short context Short context Input".
+      if (text && !parts.includes(text)) parts.push(text)
+    }
+    headers.push(parts.join(' ').trim())
+  }
+
+  const rows = bodyRows.filter((cells) => cells.some((c) => c.length > 0))
+  if (rows.length === 0 || headers.every((h) => !h)) return null
+
+  const explicitCaption = cleanText($table.find('caption').first().text())
+  const captionPath = explicitCaption ? [explicitCaption, ...headingPath] : headingPath
+
+  return { caption: captionPath[0] ?? '', captionPath, headers, rows }
+}
+
+/** First breadcrumb entry matching `pattern`, searching nearest-first. */
+export function findInPath(table: HtmlTable, pattern: RegExp): string | null {
+  return table.captionPath.find((entry) => pattern.test(entry)) ?? null
+}
+
+/**
+ * Pricing tiers that are not comparable to a vendor's standard rate.
+ *
+ * Batch is typically 50% off and asynchronous; Flex/Priority trade latency for
+ * price. Mixing one vendor's batch rate into a table of another's standard
+ * rate would make the comparison wrong, so these tables are skipped entirely.
+ * Tracking them as separate tiers is a later milestone.
+ */
+export const NON_STANDARD_TIER = /\b(batch|flex|priority|fast mode|provisioned|scale tier)\b/i
+
+export function isNonStandardTier(table: HtmlTable): boolean {
+  return table.captionPath.some((entry) => NON_STANDARD_TIER.test(entry))
+}
+
+/**
+ * Read a cell's text with element boundaries preserved as whitespace.
+ *
+ * Cheerio's `.text()` concatenates descendants with no separator, so markup
+ * like `Claude Sonnet 5<span>(through August 31, 2026)</span>` collapses to
+ * "Claude Sonnet 5(through August 31, 2026)" — gluing two words together and
+ * breaking any word-boundary matching downstream. Inserting spaces around
+ * every child element keeps tokens separate; cleanText collapses the excess.
+ */
+function cellText($: cheerio.CheerioAPI, $cell: AnyCheerio): string {
+  const $clone = $cell.clone() as unknown as AnyCheerio
+  $clone.find('br').replaceWith(' ')
+  $clone.find('*').each((_i, child) => {
+    $(child).before(' ').after(' ')
+  })
+  return cleanText($clone.text())
+}
+
+/** Index of the first header matching `pattern`, or -1. */
+export function findColumn(headers: string[], pattern: RegExp): number {
+  return headers.findIndex((header) => pattern.test(header))
+}
+
+/**
+ * Index of the first header matching `pattern` but NOT `exclude`.
+ * Needed to separate "Input" from "Cached input" — the former matches both.
+ */
+export function findColumnExcluding(headers: string[], pattern: RegExp, exclude: RegExp): number {
+  return headers.findIndex((header) => pattern.test(header) && !exclude.test(header))
+}
+
+export function cell(row: string[], index: number): string | null {
+  if (index < 0 || index >= row.length) return null
+  return row[index] || null
+}

@@ -1,0 +1,89 @@
+import { timingSafeEqual } from 'node:crypto'
+import { NextResponse } from 'next/server'
+import { env } from '@/lib/env.ts'
+import { pruneRateLimitWindows } from '@/lib/rate-limit.ts'
+import { runPipeline } from '@/pipeline/run.ts'
+
+export const runtime = 'nodejs'
+export const dynamic = 'force-dynamic'
+/** Ten providers fetched sequentially; needs more than the 60s Hobby ceiling. */
+export const maxDuration = 300
+
+/**
+ * POST|GET /api/cron/update-prices
+ *
+ * Triggered daily by Vercel Cron, which sends `Authorization: Bearer $CRON_SECRET`.
+ * Returns 200 with a per-provider report whenever at least one provider
+ * succeeded — a single broken vendor page must not turn the whole job red.
+ * Returns 502 only if every provider failed, which is the signal worth paging on.
+ */
+async function handle(request: Request): Promise<NextResponse> {
+  if (!isAuthorized(request)) {
+    return NextResponse.json(
+      { error: { code: 'unauthorized', message: 'Invalid or missing cron secret.' } },
+      { status: 401, headers: { 'cache-control': 'no-store' } },
+    )
+  }
+
+  const params = new URL(request.url).searchParams
+  const only = params
+    .getAll('provider')
+    .flatMap((v) => v.split(','))
+    .map((v) => v.trim())
+    .filter(Boolean)
+
+  try {
+    const summary = await runPipeline({
+      only: only.length > 0 ? only : undefined,
+      dryRun: params.get('dry_run') === 'true',
+    })
+
+    if (!summary.dryRun) {
+      // Housekeeping is best-effort and must not fail the run.
+      await pruneRateLimitWindows().catch(() => {})
+    }
+
+    return NextResponse.json(summary, {
+      status: summary.ok ? 200 : 502,
+      headers: { 'cache-control': 'no-store' },
+    })
+  } catch (error) {
+    console.error('cron/update-prices failed', error)
+    return NextResponse.json(
+      {
+        error: {
+          code: 'pipeline_error',
+          message: error instanceof Error ? error.message : String(error),
+        },
+      },
+      { status: 500, headers: { 'cache-control': 'no-store' } },
+    )
+  }
+}
+
+/**
+ * Constant-time comparison so the secret can't be recovered by timing the
+ * endpoint. Length is compared first because timingSafeEqual throws on a
+ * length mismatch.
+ */
+function isAuthorized(request: Request): boolean {
+  const header = request.headers.get('authorization') ?? ''
+  const presented = header.toLowerCase().startsWith('bearer ') ? header.slice(7).trim() : ''
+  if (!presented) return false
+
+  let expected: string
+  try {
+    expected = env.cronSecret
+  } catch {
+    // No secret configured — refuse rather than run unauthenticated.
+    return false
+  }
+
+  const a = Buffer.from(presented)
+  const b = Buffer.from(expected)
+  if (a.length !== b.length) return false
+  return timingSafeEqual(a, b)
+}
+
+export const GET = handle
+export const POST = handle
