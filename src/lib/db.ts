@@ -17,9 +17,13 @@ declare global {
 function createClient(): postgres.Sql {
   return postgres(env.databaseUrl, {
     prepare: false,
-    max: 5,
+    // Deliberately small. Next spawns one build worker per CPU and each gets
+    // its own pool, so a generous per-process limit multiplies into far more
+    // connections than Supabase's pooler allows — which starves the build and
+    // makes individual pages hang rather than fail loudly.
+    max: 3,
     idle_timeout: 20,
-    connect_timeout: 10,
+    connect_timeout: 15,
     // numeric(12,6) arrives as a string by default to avoid float precision
     // loss. Prices are small enough that a JS number is exact here, and the
     // API contract says these are numbers.

@@ -4,7 +4,7 @@ import { notFound } from 'next/navigation'
 import { Breadcrumbs, JsonLd, PageShell, PriceStat, SiteFooter } from '@/components/site-chrome.tsx'
 import { formatContext, formatPrice } from '@/lib/format.ts'
 import { getBrand } from '@/lib/provider-brands.ts'
-import { getAllModelRefs, getHistory, getModelForProvider, getProviderModels } from '@/lib/queries.ts'
+import { getHistory, getModelForProvider, getProviderModels } from '@/lib/queries.ts'
 import {
   absoluteUrl,
   breadcrumbSchema,
@@ -21,13 +21,22 @@ export const revalidate = 3600
 /** Unknown model ids render on demand rather than 404ing before the next build. */
 export const dynamicParams = true
 
+/**
+ * Model pages are rendered on first request, not at build time.
+ *
+ * Prerendering all 216 meant 200+ concurrent page renders each opening
+ * database connections during the build. Against a local database that is
+ * free; against a hosted one it exhausts the connection pooler and pages hang
+ * until the build times out.
+ *
+ * With `dynamicParams` on and an hourly `revalidate`, the first request to a
+ * page renders and caches it, and every request after that is served from the
+ * cache — so the pages are still static in practice, without making the build
+ * depend on 216 successful round trips. The 10 provider hubs *are* prerendered,
+ * since they are the pages that matter most for search and cost little.
+ */
 export async function generateStaticParams() {
-  try {
-    const refs = await getAllModelRefs()
-    return refs.map((ref) => ({ provider: ref.provider, model: ref.modelId }))
-  } catch {
-    return []
-  }
+  return []
 }
 
 async function load(providerSlug: string, modelId: string) {
