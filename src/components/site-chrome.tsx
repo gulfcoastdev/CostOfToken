@@ -46,6 +46,7 @@ export function SiteFooter() {
         {[
           { href: '/', label: 'All models' },
           { href: '/providers', label: 'Providers' },
+          { href: '/calculator', label: 'Cost calculator' },
           { href: '/sources', label: 'Data sources' },
           { href: '/api-docs', label: 'API' },
           { href: '/about', label: 'About' },

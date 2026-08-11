@@ -1,6 +1,7 @@
 import type { MetadataRoute } from 'next'
 import { getAllModelRefs, getLastUpdated, getProviders } from '@/lib/queries.ts'
 import { absoluteUrl, modelPath, providerPath } from '@/lib/seo.ts'
+import { COMPARISONS } from '../../data/comparisons.ts'
 
 /**
  * Generated per request rather than at build time — see src/app/page.tsx.
@@ -48,6 +49,18 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
         changeFrequency: 'weekly' as const,
         priority: 0.7,
       },
+      {
+        url: absoluteUrl('/calculator'),
+        lastModified: homeModified,
+        changeFrequency: 'daily' as const,
+        priority: 0.9,
+      },
+      ...COMPARISONS.map((pair) => ({
+        url: absoluteUrl(`/compare/${pair.slug}`),
+        lastModified: homeModified,
+        changeFrequency: 'daily' as const,
+        priority: 0.7,
+      })),
       {
         url: absoluteUrl('/sources'),
         lastModified: homeModified,

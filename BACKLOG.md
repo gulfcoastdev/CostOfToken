@@ -12,7 +12,7 @@ Working roadmap. Ordered by priority, not by effort.
       a nested cached call and a `Map` that could not survive the data cache
       were fixed with it. All pages now respond in ~0.2s warm.
 
-- [ ] **Workload calculator**
+- [x] **Workload calculator** — done, `/calculator`.
       Input tokens + output tokens × requests per day or month → ranked cost
       list.
       *Notes:* the model pages already have a static version of this (`What X
@@ -22,7 +22,7 @@ Working roadmap. Ordered by priority, not by effort.
       make the site the one people bookmark, because it answers the question
       the table only approximates.
 
-- [ ] **Top compare pages**
+- [x] **Top compare pages** — done, both live.
       - `/compare/gpt-5.6-sol-vs-claude-opus-5`
       - `/compare/gpt-5.6-luna-vs-gemini-3.6-flash`
       *Notes:* keep this a bounded, hand-picked set. Generating every pairing

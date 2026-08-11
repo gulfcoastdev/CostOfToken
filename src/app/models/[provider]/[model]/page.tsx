@@ -16,6 +16,7 @@ import {
   providerPath,
 } from '@/lib/seo.ts'
 import type { HistoryPointV1, PriceRowV1 } from '@/lib/types.ts'
+import { comparisonsForModel } from '../../../../../data/comparisons.ts'
 
 export const revalidate = 3600
 /** Unknown model ids render on demand rather than 404ing before the next build. */
@@ -267,6 +268,26 @@ export default async function ModelPage({
           ))}
         </dl>
       </section>
+
+      {comparisonsForModel(row.provider, row.model_id).length > 0 && (
+        <section className="mb-8">
+          <h2 className="mb-3 text-xl font-semibold tracking-tight text-neutral-950">
+            Head-to-head comparisons
+          </h2>
+          <ul className="flex flex-wrap gap-2 p-0">
+            {comparisonsForModel(row.provider, row.model_id).map((pair) => (
+              <li key={pair.slug} className="list-none">
+                <Link
+                  href={`/compare/${pair.slug}`}
+                  className="inline-block rounded-full border border-neutral-200 bg-white px-3.5 py-1.5 text-[13px] font-medium text-neutral-700 hover:border-emerald-600 hover:text-emerald-700"
+                >
+                  {pair.slug.replace('-vs-', ' vs ')}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       {siblings.length > 1 && (
         <section className="mb-8">
