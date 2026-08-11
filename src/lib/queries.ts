@@ -236,6 +236,56 @@ export async function getPriceTrends(days = 90, points = 6): Promise<Map<string,
   return trends
 }
 
+export interface ModelRef {
+  provider: string
+  modelId: string
+  updatedAt: string | null
+}
+
+/** Every indexable model, for sitemap generation and static params. */
+export async function getAllModelRefs(): Promise<ModelRef[]> {
+  const rows = await sql<
+    Array<{ provider: string; model_id: string; updated_at: Date | null }>
+  >`
+    select p.slug as provider, m.model_id, pr.updated_at
+      from models m
+      join providers p on p.id = m.provider_id
+      left join prices pr on pr.model_id = m.id
+     where m.is_active
+     order by p.slug, m.model_id
+  `
+  return rows.map((r) => ({
+    provider: r.provider,
+    modelId: r.model_id,
+    updatedAt: r.updated_at ? r.updated_at.toISOString() : null,
+  }))
+}
+
+/** One model resolved within its provider, so ids that repeat across vendors stay distinct. */
+export async function getModelForProvider(
+  provider: string,
+  modelId: string,
+): Promise<PriceRowV1 | null> {
+  const [record] = await sql<PriceRecord[]>`
+    select *, 1 as total_count
+      from v_current_prices
+     where provider = ${provider} and model_id = ${modelId}
+     limit 1
+  `
+  return record ? toPriceRow(record) : null
+}
+
+/** Cheapest and most expensive comparable models, for contextual copy on detail pages. */
+export async function getProviderModels(provider: string): Promise<PriceRowV1[]> {
+  const records = await sql<PriceRecord[]>`
+    select *, count(*) over () as total_count
+      from v_current_prices
+     where provider = ${provider} and is_active
+     order by input_price asc nulls last
+  `
+  return records.map(toPriceRow)
+}
+
 export async function getLastUpdated(): Promise<string | null> {
   const [row] = await sql<Array<{ updated_at: Date | null }>>`
     select max(updated_at) as updated_at from prices

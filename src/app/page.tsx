@@ -1,9 +1,57 @@
+import type { Metadata } from 'next'
+import Link from 'next/link'
 import {
   PriceExplorer,
   type ExplorerRow,
   type InitialFilters,
 } from '@/components/price-explorer.tsx'
+import { JsonLd } from '@/components/site-chrome.tsx'
+import { getBrand } from '@/lib/provider-brands.ts'
 import { getLastUpdated, getPriceTrends, getPrices, getProviders } from '@/lib/queries.ts'
+import {
+  datasetSchema,
+  faqSchema,
+  organizationSchema,
+  providerPath,
+  websiteSchema,
+} from '@/lib/seo.ts'
+
+export const metadata: Metadata = {
+  alternates: { canonical: '/' },
+}
+
+/**
+ * Answers to the questions this page exists to settle. Rendered as visible
+ * copy and mirrored into FAQ structured data, so search and answer engines
+ * quote the same wording a reader sees.
+ */
+const HOME_FAQS = [
+  {
+    question: 'Which LLM API is cheapest?',
+    answer:
+      'It depends on the mix of input and output tokens, since output is typically 3-5x the price of input. Sort the table by blended cost to rank on a simple mean of the two, or by input alone if your workload is prompt-heavy. Several Zhipu GLM Flash models are genuinely free.',
+  },
+  {
+    question: 'What does "per 1M tokens" mean?',
+    answer:
+      'Providers bill per token, and a token is roughly 0.75 of an English word. Quoting per 1,000,000 tokens is the industry convention because per-token prices run to eight decimal places. Every price here is normalized to USD per 1M tokens so models are directly comparable.',
+  },
+  {
+    question: 'What is cached input pricing?',
+    answer:
+      'Most providers charge a reduced rate when a prompt repeats a prefix they have already processed — often 10% of the normal input price. If you send the same system prompt or document on every call, cached input is usually the single largest saving available.',
+  },
+  {
+    question: 'How current are these prices?',
+    answer:
+      'They are re-read from each provider every day. A price is only recorded when it actually changes, so the history shows real movements rather than daily noise, and every row shows the date it was last confirmed.',
+  },
+  {
+    question: 'Is there an API for this pricing data?',
+    answer:
+      'Yes. GET /api/v1/prices returns the whole table as JSON, free and without signup, rate limited to 60 requests per hour per IP. /llms-full.txt serves the same data as markdown for LLM ingestion.',
+  },
+]
 
 /**
  * The comparison table.
@@ -56,12 +104,79 @@ export default async function HomePage({
   }
 
   return (
-    <PriceExplorer
-      rows={rows}
-      providers={providers}
-      updatedAt={updatedAt}
-      initial={parseFilters(params, providers.map((p) => p.slug))}
-    />
+    <>
+      <JsonLd
+        nodes={[
+          websiteSchema(),
+          organizationSchema(),
+          datasetSchema(rows.length, updatedAt),
+          faqSchema(HOME_FAQS),
+        ]}
+      />
+      <PriceExplorer
+        rows={rows}
+        providers={providers}
+        updatedAt={updatedAt}
+        initial={parseFilters(params, providers.map((p) => p.slug))}
+      />
+      <div className="mx-auto max-w-[1120px] px-5 pb-14">
+        <ProviderLinks providers={providers} />
+        <HomeFaq />
+      </div>
+    </>
+  )
+}
+
+/**
+ * Hub links to each provider page.
+ *
+ * Rendered on the server so they are in the initial HTML: these are the links
+ * that let a crawler reach the per-provider and per-model pages at all, and
+ * they carry the brand wording people actually search for.
+ */
+function ProviderLinks({ providers }: { providers: Array<{ slug: string; name: string }> }) {
+  return (
+    <section className="mb-10">
+      <h2 className="mb-3 text-xl font-semibold tracking-tight text-neutral-950">
+        Pricing by provider
+      </h2>
+      <ul className="grid grid-cols-2 gap-2 p-0 sm:grid-cols-3 lg:grid-cols-5">
+        {providers.map((provider) => {
+          const brand = getBrand(provider.slug)
+          return (
+            <li key={provider.slug} className="list-none">
+              <Link
+                href={providerPath(provider.slug)}
+                className="block rounded-xl border border-neutral-200 bg-white px-4 py-3 text-sm font-medium text-neutral-800 hover:border-emerald-600 hover:text-emerald-700"
+              >
+                {brand?.brand ?? provider.name} pricing
+                {brand && brand.brand !== brand.company && (
+                  <span className="block text-xs font-normal text-neutral-500">{brand.company}</span>
+                )}
+              </Link>
+            </li>
+          )
+        })}
+      </ul>
+    </section>
+  )
+}
+
+function HomeFaq() {
+  return (
+    <section>
+      <h2 className="mb-3 text-xl font-semibold tracking-tight text-neutral-950">
+        LLM pricing questions
+      </h2>
+      <dl className="space-y-3">
+        {HOME_FAQS.map((faq) => (
+          <div key={faq.question} className="rounded-xl border border-neutral-200 bg-white px-5 py-4">
+            <dt className="font-semibold text-neutral-900">{faq.question}</dt>
+            <dd className="m-0 mt-1.5 text-[15px] leading-relaxed text-neutral-700">{faq.answer}</dd>
+          </div>
+        ))}
+      </dl>
+    </section>
   )
 }
 

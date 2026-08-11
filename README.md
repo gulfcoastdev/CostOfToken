@@ -163,6 +163,59 @@ The pipeline's failure mode is quietly publishing wrong numbers, so:
 
 ---
 
+## SEO and AI discoverability
+
+The site is a hub-and-spoke tree rather than one page, because a single table
+cannot rank for "gemini pricing" or "gpt-5.6-sol cost":
+
+| Route | Targets | Count |
+| --- | --- | --- |
+| `/` | "LLM API pricing comparison", "cost per token" | 1 |
+| `/providers/[slug]` | "Gemini API pricing", "Claude pricing" — the head terms | 10 |
+| `/models/[provider]/[model]` | "gpt-5.6-sol pricing" — the long tail | 216 |
+
+Provider pages lead with the **brand**, not the company: the database slug is
+`google` but nobody searches for "Google pricing" when they mean Gemini. Common
+alternates (`/providers/gemini`, `/providers/claude`, `/providers/qwen`)
+permanently redirect to the canonical page so a guessed URL lands and link
+equity consolidates instead of splitting.
+
+Every page carries a canonical URL, Open Graph and Twitter tags, and
+schema.org JSON-LD as a single `@graph`:
+
+- Home — `WebSite`, `Organization`, `Dataset`, `FAQPage`
+- Provider — `BreadcrumbList`, `CollectionPage`, `ItemList`, `FAQPage`
+- Model — `BreadcrumbList`, `Product` with per-unit `Offer`s, `WebPage`, `FAQPage`
+
+Token pricing has no standard schema.org unit, so each `Offer` uses a
+`UnitPriceSpecification` with an explicit `referenceQuantity` of 1,000,000
+tokens. That keeps the markup truthful rather than implying a $5 purchase.
+
+`sitemap.xml` is generated from the database, and `lastModified` comes from
+each model's price row rather than the build time — a sitemap that claims
+everything changed on every deploy trains crawlers to ignore the field.
+
+### For answer engines
+
+Being the source that gets quoted when someone asks a chatbot what an LLM
+costs is worth as much as ranking:
+
+- **`/llms.txt`** — a small plain-text index of the site and its data endpoints.
+- **`/llms-full.txt`** — every tracked price as one markdown document (~28KB),
+  so a model can ingest the whole dataset in a single fetch instead of crawling
+  216 pages. This is the same affordance that makes OpenAI's and Anthropic's
+  own pricing readable to *this* project, offered back.
+- The `Dataset` schema names the API and markdown dump as distributions, so the
+  machine-readable form is discoverable without scraping HTML.
+- `robots.ts` **explicitly allows** GPTBot, ClaudeBot, PerplexityBot,
+  Google-Extended and others. Blocking them would remove exactly the citations
+  worth having.
+- FAQ copy is written from the row data, so the visible answer, the structured
+  data and the table can never disagree.
+
+Set `NEXT_PUBLIC_SITE_URL` in the deployment environment; canonical tags,
+sitemap URLs and OG tags all derive from it.
+
 ## Data model
 
 `providers` → `models` → `prices` (one current row per model), plus append-only
