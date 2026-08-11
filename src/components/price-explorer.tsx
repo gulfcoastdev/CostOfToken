@@ -364,14 +364,14 @@ export function PriceExplorer({ rows, providers, updatedAt, initial }: ExplorerP
       </div>
 
       <div className="mb-2 flex flex-wrap items-center gap-3">
-        <p className="text-[13px] text-neutral-400">
+        <p className="text-[13px] text-neutral-600">
           Showing {sorted.length} of {rows.length} models · select a row for details
         </p>
         {hasFilters && (
           <button
             type="button"
             onClick={resetFilters}
-            className="text-[13px] font-medium text-emerald-500 underline underline-offset-2 hover:text-emerald-400"
+            className="text-[13px] font-medium text-emerald-700 underline underline-offset-2 hover:text-emerald-800"
           >
             Clear filters
           </button>
@@ -405,12 +405,12 @@ function Header({ updatedAt }: { updatedAt: string | null }) {
   return (
     <header className="mb-5">
       <div className="flex flex-wrap items-center gap-2.5">
-        <h1 className="m-0 text-2xl font-bold tracking-tight text-neutral-100">CostOfToken</h1>
+        <h1 className="m-0 text-2xl font-bold tracking-tight text-neutral-950">CostOfToken</h1>
         <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-emerald-700">
           Updated daily
         </span>
       </div>
-      <p className="mt-1.5 text-[13px] text-neutral-400">
+      <p className="mt-1.5 text-[13px] text-neutral-600">
         Updated {formatRelativeTime(updatedAt)} · No signup · Free &amp; open · LLM API pricing
         normalized to USD per 1M tokens
       </p>
@@ -807,7 +807,7 @@ function describeTrend(
 
 function Footer() {
   return (
-    <footer className="mt-7 flex flex-wrap items-baseline justify-between gap-4 border-t border-neutral-800 pt-4">
+    <footer className="mt-7 flex flex-wrap items-baseline justify-between gap-4 border-t border-neutral-300 pt-4">
       <p className="m-0 max-w-xl text-[12.5px] text-neutral-500">
         Data sources: first-party pricing pages where published, OpenRouter catalogue as fallback
         (marked <em>Via OpenRouter</em> — a reseller, whose prices can differ from the vendor&apos;s
@@ -815,7 +815,7 @@ function Footer() {
       </p>
       <p className="m-0 text-[12.5px] text-neutral-500">
         Public API ·{' '}
-        <code className="rounded bg-neutral-800 px-1.5 py-0.5 text-[11px] text-neutral-300">
+        <code className="rounded bg-neutral-200 px-1.5 py-0.5 text-[11px] text-neutral-700">
           GET /api/v1/prices
         </code>
       </p>

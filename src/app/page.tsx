@@ -98,22 +98,22 @@ function parseFilters(
 function SetupNotice({ error }: { error: string | null }) {
   return (
     <main className="mx-auto max-w-3xl px-5 py-16">
-      <h1 className="text-2xl font-bold tracking-tight text-neutral-100">CostOfToken</h1>
-      <div className="mt-6 rounded-xl border border-amber-700 bg-amber-950 p-5 text-sm text-amber-100">
+      <h1 className="text-2xl font-bold tracking-tight text-neutral-950">CostOfToken</h1>
+      <div className="mt-6 rounded-xl border border-amber-300 bg-amber-50 p-5 text-sm text-amber-900">
         <p className="font-semibold">
           {error ? 'Could not load prices.' : 'No pricing data yet.'}
         </p>
-        {error && <p className="mt-2 font-mono text-xs text-amber-200">{error}</p>}
+        {error && <p className="mt-2 font-mono text-xs text-amber-800">{error}</p>}
         <ol className="mt-3 list-decimal space-y-1 pl-5">
           <li>
-            Set <code className="text-amber-200">DATABASE_URL</code> in{' '}
-            <code className="text-amber-200">.env.local</code>
+            Set <code className="font-semibold">DATABASE_URL</code> in{' '}
+            <code className="font-semibold">.env.local</code>
           </li>
           <li>
-            Run <code className="text-amber-200">npm run db:push</code>
+            Run <code className="font-semibold">npm run db:push</code>
           </li>
           <li>
-            Run <code className="text-amber-200">npm run pipeline:run</code>
+            Run <code className="font-semibold">npm run pipeline:run</code>
           </li>
         </ol>
       </div>

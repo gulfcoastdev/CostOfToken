@@ -11,12 +11,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       {/*
-        The design frames light content cards against a near-black page. An
-        explicit text colour is set here rather than inherited: the prototype
-        left `color:#171717` on a `#0A0808` background, so any text added
-        outside a white card would have been near-black on near-black.
+        Light page, white cards. The page sits a shade off pure white so the
+        cards read as raised surfaces against it rather than dissolving into
+        the background. Body text colour is set explicitly rather than left to
+        inherit, so anything added outside a card is legible by default.
       */}
-      <body className="min-h-screen bg-[#0A0808] text-neutral-200 antialiased">{children}</body>
+      <body className="min-h-screen bg-[#F7F6F4] text-neutral-900 antialiased">{children}</body>
     </html>
   )
 }
