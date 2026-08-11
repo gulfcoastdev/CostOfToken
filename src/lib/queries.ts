@@ -161,6 +161,81 @@ export async function getHistory(modelId: string, limit = 365): Promise<HistoryP
   }))
 }
 
+export interface PriceTrend {
+  /** Evenly spaced input-price samples, oldest first. */
+  series: number[]
+  /** When the price last actually moved, or null if it has never changed. */
+  lastChangedAt: string | null
+  changeCount: number
+}
+
+/**
+ * Build evenly spaced price series for every model.
+ *
+ * `price_history` only records a row when a price actually moves — that's what
+ * keeps a daily re-scrape from growing the table — so there are no
+ * evenly-spaced samples to read. The series is reconstructed by step
+ * interpolation: each sample takes the last price recorded at or before that
+ * date, which is exactly what the price was on that day.
+ *
+ * Samples before a model's first recording are back-filled with its earliest
+ * known price. That's an assumption, not data — it renders as a flat line,
+ * which honestly reflects "we weren't tracking it yet" rather than inventing
+ * a change.
+ */
+export async function getPriceTrends(days = 90, points = 6): Promise<Map<string, PriceTrend>> {
+  const rows = await sql<
+    Array<{ model_id: string; input_price: number | null; recorded_at: Date }>
+  >`
+    select m.model_id, h.input_price, h.recorded_at
+      from price_history h
+      join models m on m.id = h.model_id
+     order by m.model_id, h.recorded_at asc
+  `
+
+  const byModel = new Map<string, Array<{ price: number | null; at: number }>>()
+  for (const row of rows) {
+    const list = byModel.get(row.model_id) ?? []
+    list.push({ price: row.input_price, at: row.recorded_at.getTime() })
+    byModel.set(row.model_id, list)
+  }
+
+  const now = Date.now()
+  const windowMs = days * 24 * 60 * 60 * 1000
+  const sampleTimes = Array.from({ length: points }, (_, i) =>
+    points === 1 ? now : now - windowMs + (windowMs * i) / (points - 1),
+  )
+
+  const trends = new Map<string, PriceTrend>()
+
+  for (const [modelId, history] of byModel) {
+    const usable = history.filter((h) => h.price !== null) as Array<{ price: number; at: number }>
+    if (usable.length === 0) continue
+
+    const series = sampleTimes.map((time) => {
+      let value = usable[0].price // back-fill before first observation
+      for (const point of usable) {
+        if (point.at <= time) value = point.price
+        else break
+      }
+      return value
+    })
+
+    let lastChangedAt: string | null = null
+    let changeCount = 0
+    for (let i = 1; i < usable.length; i++) {
+      if (usable[i].price !== usable[i - 1].price) {
+        changeCount++
+        lastChangedAt = new Date(usable[i].at).toISOString()
+      }
+    }
+
+    trends.set(modelId, { series, lastChangedAt, changeCount })
+  }
+
+  return trends
+}
+
 export async function getLastUpdated(): Promise<string | null> {
   const [row] = await sql<Array<{ updated_at: Date | null }>>`
     select max(updated_at) as updated_at from prices

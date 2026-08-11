@@ -204,16 +204,40 @@ the brace matcher.
 
 ---
 
+## Web UI
+
+Built from the design prototype in [`UIDesign/`](UIDesign/). The page is a
+Server Component that reads Postgres directly and hands the full set to a
+client component, so every filter and sort is instant with no round trip.
+
+- Provider chips, search, Flagship / Under $1 / 1M+ context toggles, modality
+  filter, five sort orders
+- Row expands to long-context pricing, source link, API id, tags, and a price
+  sparkline
+- Filter state is mirrored into the URL, so Copy link / Share reproduce the view
+
+Four things were changed from the prototype where it would have shipped wrong:
+
+| Prototype | Why it changed |
+| --- | --- |
+| `Avg` column showed `(input+output)/2`; ranking used `input + 2×output` | Two formulas on one screen made the table look mis-sorted against its own numbers. Now one blended metric drives both. |
+| Free models ranked normally | Three Zhipu GLM-Flash models are $0, so they'd hold "Best value" forever. They get a **Free** badge and sit outside the value ranking. |
+| Toolbar and table header both `sticky top:0` | They collided. `overflow-x:auto` also makes `overflow-y` compute to `auto`, so the header pinned against the wrapper and hid rows behind it. The table is now its own bounded scroll container. |
+| Sticky Input column hardcoded to `left:220px` | Ignored the Rank column's width and any model id wider than 220px. Only Rank and Model are pinned now, at offsets derived from the same spacing token. |
+
+Also added: labels on the search and sort controls, a real `aria-expanded`
+toggle button per row (the prototype's rows were mouse-only), and an explicit
+body text colour — the prototype left near-black type on its near-black page
+background.
+
+The "what that buys you" token counts are rough illustrations and are labelled
+as such.
+
 ## Status
 
-**Done and verified:** schema + triggers, all 10 provider extractors (163 models
-live), normalization, enrichment, upsert with history, all API endpoints,
-rate limiting, cron auth, per-provider soft-fail.
-
-**Placeholder:** the web UI. `src/app/page.tsx` is an unstyled server-rendered
-table that exists to prove the data path end to end. Filters, sorting,
-search, the current/historical toggle, and the real design are the next
-milestone.
+**Done and verified:** schema + triggers, all 10 provider extractors,
+normalization, enrichment, upsert with history, all API endpoints, rate
+limiting, cron auth, per-provider soft-fail, and the comparison UI.
 
 **Known gaps:**
 - ByteDance and Baidu resolve to 1 model each — OpenRouter barely carries them.
@@ -223,3 +247,6 @@ milestone.
 - Non-USD pricing is stored in its published currency with no FX conversion;
   the USD international pages are preferred where they exist.
 - Batch/Flex/Priority tiers are skipped rather than tracked.
+- Price history only starts accumulating once the daily job has run for a
+  while, so sparklines are flat on a fresh database. That's honest — there is
+  no earlier data — but the 90-day trend only becomes meaningful over time.

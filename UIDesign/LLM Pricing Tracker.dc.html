@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    body { margin: 0; }
+    * { box-sizing: border-box; font-family: -apple-system, "Segoe UI", system-ui, sans-serif; }
+    input::placeholder { color: #A3A3A3; }
+  </style>
+</helmet>
+<div style="min-height: 100vh; color: #171717; background-color: #0A0808">
+  <div style="max-width:1120px;margin:0 auto;padding:28px 20px 56px;">
+
+    <header style="margin-bottom:20px;">
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+        <h1 style="margin: 0; font-size: 24px; font-weight: 700; letter-spacing: -0.02em; color: #E8E1E1">CostOfToken</h1>
+        <span style="background:#ECFDF5;color:#047857;font-size:11px;font-weight:700;padding:3px 9px;border-radius:999px;text-transform:uppercase;letter-spacing:0.04em;">Updated daily</span>
+      </div>
+      <p style="margin:6px 0 0;font-size:13px;color:#737373;">Updated {{ updatedLabel }} · No signup · Free &amp; open · LLM API pricing normalized to USD per 1M tokens</p>
+    </header>
+
+    <div style="display:flex;flex-wrap:wrap;gap:14px;margin-bottom:16px;">
+      <div style="flex:1;min-width:240px;background:#FFFFFF;border:1px solid #E5E5E5;border-radius:14px;padding:20px 22px;">
+        <p style="margin:0 0 14px;font-size:12px;font-weight:600;color:#737373;text-transform:uppercase;letter-spacing:0.04em;">Average across {{ resultCount }} selected models</p>
+        <div style="display:flex;gap:28px;flex-wrap:wrap;">
+          <div>
+            <div style="font-size:34px;font-weight:700;letter-spacing:-0.02em;color:#171717;font-variant-numeric:tabular-nums;">{{ avgInputStr }}</div>
+            <div style="font-size:12.5px;color:#A3A3A3;margin-top:2px;">Avg input /1M</div>
+          </div>
+          <div>
+            <div style="font-size:34px;font-weight:700;letter-spacing:-0.02em;color:#171717;font-variant-numeric:tabular-nums;">{{ avgOutputStr }}</div>
+            <div style="font-size:12.5px;color:#A3A3A3;margin-top:2px;">Avg output /1M</div>
+          </div>
+          <div>
+            <div style="font-size:34px;font-weight:700;letter-spacing:-0.02em;color:#059669;font-variant-numeric:tabular-nums;">{{ avgBlendedStr }}</div>
+            <div style="font-size:12.5px;color:#A3A3A3;margin-top:2px;">Avg blended /1M</div>
+          </div>
+        </div>
+      </div>
+      <div style="flex:1;min-width:280px;background:#FFFFFF;border:1px solid #E5E5E5;border-radius:14px;padding:20px 22px;">
+        <div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px;flex-wrap:wrap;">
+          <p style="margin:0;font-size:12px;font-weight:600;color:#737373;text-transform:uppercase;letter-spacing:0.04em;">Blended price trend · 90 days</p>
+          <span style="{{ chartPctStyle }}">{{ chartPctLabel }}</span>
+        </div>
+        <svg width="100%" height="90" viewBox="0 0 320 100" preserveAspectRatio="none" style="margin-top:8px;display:block;">
+          <polygon points="{{ chartAreaPoints }}" fill="{{ chartFill }}"></polygon>
+          <polyline points="{{ chartLinePoints }}" fill="none" stroke="#059669" strokeWidth="2.5"></polyline>
+        </svg>
+        <div style="display:flex;justify-content:space-between;font-size:12px;color:#A3A3A3;margin-top:2px;">
+          <span>{{ chartStartLabel }}</span>
+          <span>{{ chartEndLabel }}</span>
+        </div>
+      </div>
+    </div>
+
+    <div style="background:#FFFFFF;border:1px solid #E5E5E5;border-radius:14px;padding:18px 22px;margin-bottom:16px;">
+      <p style="margin:0 0 14px;font-size:12px;font-weight:600;color:#737373;text-transform:uppercase;letter-spacing:0.04em;">What that buys you, at today's avg input price</p>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:16px;">
+        <sc-for list="{{ funStats }}" as="fun" hint-placeholder-count="3">
+          <div>
+            <div style="font-size:26px;font-weight:700;letter-spacing:-0.02em;color:#059669;font-variant-numeric:tabular-nums;">{{ fun.costStr }}</div>
+            <div style="font-size:13.5px;color:#404040;margin-top:4px;">{{ fun.label }}</div>
+            <div style="font-size:12px;color:#A3A3A3;margin-top:1px;">~{{ fun.tokenStr }} tokens</div>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+
+    <div style="position:sticky;top:0;z-index:10;background:#FFFFFF;border:1px solid #E5E5E5;border-radius:12px;padding:14px 16px;margin-bottom:16px;">
+      <div style="display:flex;flex-wrap:wrap;gap:8px;">
+        <sc-for list="{{ providerChips }}" as="chip" hint-placeholder-count="10">
+          <button onClick="{{ chip.toggle }}" style="{{ chip.style }}">
+            <span style="{{ chip.dotStyle }}"></span>{{ chip.name }}
+          </button>
+        </sc-for>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:10px;">
+        <input type="text" placeholder="Search models…" value="{{ search }}" onChange="{{ onSearch }}" style="flex:1;min-width:160px;padding:8px 12px;border:1px solid #E5E5E5;border-radius:8px;font-size:14px;outline:none;color:#171717;background:#FFFFFF;">
+        <button onClick="{{ flagshipChip.toggle }}" style="{{ flagshipChip.style }}">{{ flagshipChip.label }}</button>
+        <button onClick="{{ under1Chip.toggle }}" style="{{ under1Chip.style }}">{{ under1Chip.label }}</button>
+        <button onClick="{{ millionChip.toggle }}" style="{{ millionChip.style }}">{{ millionChip.label }}</button>
+        <select value="{{ sort }}" onChange="{{ onSort }}" style="padding:8px 10px;border:1px solid #E5E5E5;border-radius:8px;font-size:14px;background:#FFFFFF;color:#171717;cursor:pointer;">
+          <option value="value">Sort: Best value</option>
+          <option value="input">Sort: Lowest input</option>
+          <option value="output">Sort: Lowest output</option>
+          <option value="context">Sort: Largest context</option>
+          <option value="provider">Sort: Provider A–Z</option>
+        </select>
+        <button onClick="{{ onCopy }}" style="background:#059669;color:#FFFFFF;border:none;padding:8px 14px;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;white-space:nowrap;">{{ copyLabel }}</button>
+        <button onClick="{{ onShare }}" style="background:#FFFFFF;color:#059669;border:1px solid #059669;padding:8px 14px;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;white-space:nowrap;">Share</button>
+      </div>
+    </div>
+
+    <p style="margin:0 0 8px;font-size:13px;color:#737373;">Showing {{ resultCount }} of {{ totalCount }} models · tap a row for details</p>
+
+    <div style="overflow-x:auto;overflow-y:hidden;border:1px solid #E5E5E5;border-radius:12px;background:#FFFFFF;">
+      <table style="width:100%;min-width:900px;border-collapse:collapse;font-size:14px;">
+        <thead>
+          <tr>
+            <th style="position:sticky;top:0;z-index:2;background:#FFFFFF;text-align:left;padding:10px 12px;font-size:12px;font-weight:600;color:#737373;border-bottom:1px solid #E5E5E5;white-space:nowrap;">Rank</th>
+            <th style="position:sticky;top:0;left:0px;z-index:3;background:#FFFFFF;text-align:left;padding:10px 12px;font-size:12px;font-weight:600;color:#737373;border-bottom:1px solid #E5E5E5;min-width:220px;white-space:nowrap;">Model</th>
+            <th style="position:sticky;top:0;z-index:2;background:#FFFFFF;text-align:left;padding:10px 12px;font-size:12px;font-weight:600;color:#737373;border-bottom:1px solid #E5E5E5;white-space:nowrap;">Provider</th>
+            <th style="position:sticky;top:0;left:220px;z-index:3;background:#FFFFFF;text-align:right;padding:10px 12px;font-size:12px;font-weight:600;color:#737373;border-bottom:1px solid #E5E5E5;min-width:90px;white-space:nowrap;">Input /1M</th>
+            <th style="position:sticky;top:0;z-index:2;background:#FFFFFF;text-align:right;padding:10px 12px;font-size:12px;font-weight:600;color:#737373;border-bottom:1px solid #E5E5E5;white-space:nowrap;">Cached /1M</th>
+            <th style="position:sticky;top:0;z-index:2;background:#FFFFFF;text-align:right;padding:10px 12px;font-size:12px;font-weight:600;color:#737373;border-bottom:1px solid #E5E5E5;white-space:nowrap;">Output /1M</th>
+            <th style="position:sticky;top:0;z-index:2;background:#FFFFFF;text-align:right;padding:10px 12px;font-size:12px;font-weight:600;color:#737373;border-bottom:1px solid #E5E5E5;white-space:nowrap;">Avg /1M</th>
+            <th style="position:sticky;top:0;z-index:2;background:#FFFFFF;text-align:right;padding:10px 12px;font-size:12px;font-weight:600;color:#737373;border-bottom:1px solid #E5E5E5;white-space:nowrap;">Context</th>
+            <th style="position:sticky;top:0;z-index:2;background:#FFFFFF;text-align:left;padding:10px 12px;font-size:12px;font-weight:600;color:#737373;border-bottom:1px solid #E5E5E5;min-width:160px;white-space:nowrap;">Notes</th>
+          </tr>
+        </thead>
+        <tbody>
+          <sc-for list="{{ rows }}" as="row" hint-placeholder-count="8">
+            <tr onClick="{{ row.toggle }}" style="{{ row.rowStyle }}">
+              <td style="padding:10px 12px;color:#A3A3A3;font-size:13px;">{{ row.rank }}</td>
+              <td style="{{ row.stickyModelStyle }}">
+                <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+                  <span style="font-weight:600;color:#171717;">{{ row.model }}</span>
+                  <sc-if value="{{ row.isTop }}" hint-placeholder-val="{{ false }}">
+                    <span style="background:#ECFDF5;color:#047857;font-size:10px;font-weight:700;padding:2px 6px;border-radius:999px;white-space:nowrap;">Best value</span>
+                  </sc-if>
+                </div>
+              </td>
+              <td style="padding:10px 12px;white-space:nowrap;">
+                <span style="display:inline-flex;align-items:center;gap:6px;font-size:13px;color:#404040;">
+                  <span style="{{ row.dotStyle }}"></span>{{ row.providerName }}
+                </span>
+              </td>
+              <td style="{{ row.stickyInputStyle }}">{{ row.inputStr }}</td>
+              <td style="padding:10px 12px;text-align:right;font-variant-numeric:tabular-nums;color:#404040;">{{ row.cachedStr }}</td>
+              <td style="padding:10px 12px;text-align:right;font-variant-numeric:tabular-nums;font-weight:600;color:#171717;">{{ row.outputStr }}</td>
+              <td style="padding:10px 12px;text-align:right;font-variant-numeric:tabular-nums;color:#404040;">{{ row.avgStr }}</td>
+              <td style="padding:10px 12px;text-align:right;font-variant-numeric:tabular-nums;color:#404040;white-space:nowrap;">{{ row.contextStr }}</td>
+              <td style="padding:10px 12px;color:#737373;font-size:12.5px;">{{ row.notes }}</td>
+            </tr>
+            <sc-if value="{{ row.expanded }}" hint-placeholder-val="{{ false }}">
+              <tr>
+                <td colSpan="9" style="padding:12px 16px 16px;background:#FAFAFA;color:#525252;font-size:13px;border-bottom:1px solid #EEEEEE;">
+                  <div>{{ row.detailText }}</div>
+                  <div style="display:flex;align-items:center;gap:10px;margin-top:8px;">
+                    <svg width="70" height="20" viewBox="0 0 70 20" style="flex-shrink:0;">
+                      <polyline points="{{ row.sparklinePoints }}" fill="none" stroke="{{ row.sparklineColor }}" strokeWidth="1.5"></polyline>
+                    </svg>
+                    <span>{{ row.historyText }}</span>
+                  </div>
+                </td>
+              </tr>
+            </sc-if>
+          </sc-for>
+        </tbody>
+      </table>
+    </div>
+
+    <footer style="margin-top:28px;display:flex;flex-wrap:wrap;gap:16px;justify-content:space-between;align-items:baseline;border-top:1px solid #E5E5E5;padding-top:16px;">
+      <p style="margin:0;font-size:12.5px;color:#A3A3A3;">Data sources: first-party pricing pages where published, OpenRouter catalogue as fallback. Standard tier only.</p>
+      <p style="margin:0;font-size:12.5px;color:#A3A3A3;">Public API available · GET /api/v1/prices</p>
+    </footer>
+
+  </div>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  state = {
+    selectedProviders: [],
+    flagshipOnly: false,
+    under1: false,
+    million: false,
+    search: '',
+    sort: 'value',
+    expandedId: null,
+    copied: false,
+  };
+
+  toggleProvider(slug) {
+    this.setState(s => {
+      const has = s.selectedProviders.includes(slug);
+      return { selectedProviders: has ? s.selectedProviders.filter(p => p !== slug) : [...s.selectedProviders, slug] };
+    });
+  }
+  toggleFlag(key) { this.setState(s => ({ [key]: !s[key] })); }
+  setSearch(v) { this.setState({ search: v }); }
+  setSort(v) { this.setState({ sort: v }); }
+  toggleExpand(id) { this.setState(s => ({ expandedId: s.expandedId === id ? null : id })); }
+
+  buildShareUrl() {
+    const s = this.state;
+    const params = new URLSearchParams();
+    if (s.selectedProviders.length) params.set('providers', s.selectedProviders.join(','));
+    if (s.flagshipOnly) params.set('flagship', '1');
+    if (s.under1) params.set('under1', '1');
+    if (s.million) params.set('million', '1');
+    if (s.search) params.set('q', s.search);
+    if (s.sort !== 'value') params.set('sort', s.sort);
+    const qs = params.toString();
+    const base = (typeof window !== 'undefined') ? (window.location.origin + window.location.pathname) : '';
+    return qs ? base + '?' + qs : base;
+  }
+
+  copyLink() {
+    const url = this.buildShareUrl();
+    if (typeof navigator !== 'undefined' && navigator.clipboard) {
+      navigator.clipboard.writeText(url).catch(() => {});
+    }
+    if (typeof window !== 'undefined' && window.history) {
+      try { window.history.replaceState(null, '', url.replace(window.location.origin, '')); } catch (e) {}
+    }
+    this.setState({ copied: true });
+    setTimeout(() => this.setState({ copied: false }), 1500);
+  }
+
+  shareLink() {
+    const url = this.buildShareUrl();
+    if (typeof navigator !== 'undefined' && navigator.share) {
+      navigator.share({ title: 'CostOfToken — LLM pricing, compared', url }).catch(() => {});
+    } else {
+      this.copyLink();
+    }
+  }
+
+  renderVals() {
+    const PROVIDERS = [
+      { slug: 'openai', name: 'OpenAI', color: '#262626' },
+      { slug: 'anthropic', name: 'Anthropic', color: '#C16B4B' },
+      { slug: 'google', name: 'Google', color: '#4285F4' },
+      { slug: 'xai', name: 'xAI', color: '#7C3AED' },
+      { slug: 'deepseek', name: 'DeepSeek', color: '#DB2777' },
+      { slug: 'alibaba', name: 'Alibaba', color: '#F97316' },
+      { slug: 'moonshot', name: 'Moonshot', color: '#1E3A8A' },
+      { slug: 'zhipu', name: 'Zhipu', color: '#0891B2' },
+      { slug: 'bytedance', name: 'ByteDance', color: '#EF4444' },
+      { slug: 'baidu', name: 'Baidu', color: '#78716C' },
+    ];
+
+    const MODELS = [
+      { id: 'openai-gpt-5.1', provider: 'openai', model: 'GPT-5.1', input: 1.75, cachedInput: 0.44, output: 14, context: 400000, tags: ['flagship'], sourceKind: 'scrape', history: [1.08, 1.08, 1.08, 1.08, 1, 1], daysAgo: 18 },
+      { id: 'openai-gpt-5.1-mini', provider: 'openai', model: 'GPT-5.1 Mini', input: 0.25, cachedInput: 0.06, output: 2, context: 400000, tags: [], sourceKind: 'scrape', history: [1, 1, 1, 1, 1, 1], daysAgo: 210 },
+      { id: 'openai-gpt-5.1-nano', provider: 'openai', model: 'GPT-5.1 Nano', input: 0.05, cachedInput: 0.01, output: 0.4, context: 400000, tags: [], sourceKind: 'scrape', history: [1, 1, 1, 1, 1, 1], daysAgo: 210 },
+      { id: 'anthropic-opus-4.5', provider: 'anthropic', model: 'Claude Opus 4.5', input: 5, cachedInput: 0.5, output: 25, context: 200000, tags: ['flagship'], sourceKind: 'scrape', history: [1, 1, 1, 1, 1, 1], daysAgo: 95 },
+      { id: 'anthropic-sonnet-4.5', provider: 'anthropic', model: 'Claude Sonnet 4.5', input: 3, cachedInput: 0.3, output: 15, context: 1000000, longThreshold: 200000, longInput: 6, longOutput: 22.5, tags: ['flagship'], sourceKind: 'scrape', history: [1.11, 1.11, 1, 1, 1, 1], daysAgo: 60 },
+      { id: 'anthropic-haiku-4.5', provider: 'anthropic', model: 'Claude Haiku 4.5', input: 1, cachedInput: 0.1, output: 5, context: 200000, tags: [], sourceKind: 'scrape', history: [1, 1, 1, 1, 1, 1], daysAgo: 95 },
+      { id: 'google-gemini-3-pro', provider: 'google', model: 'Gemini 3 Pro', input: 1.25, cachedInput: 0.31, output: 5, context: 1000000, longThreshold: 200000, longInput: 2.5, longOutput: 10, tags: ['flagship'], sourceKind: 'scrape', history: [1.04, 1.04, 1.04, 1, 1, 1], daysAgo: 40 },
+      { id: 'google-gemini-3-flash', provider: 'google', model: 'Gemini 3 Flash', input: 0.15, cachedInput: 0.0375, output: 0.6, context: 1000000, tags: [], sourceKind: 'scrape', history: [1, 1, 1, 1, 1, 1], daysAgo: 150 },
+      { id: 'google-gemini-3-flash-lite', provider: 'google', model: 'Gemini 3 Flash-Lite', input: 0.05, cachedInput: null, output: 0.2, context: 1000000, tags: [], sourceKind: 'scrape', history: [1, 1, 1, 1, 1, 1], daysAgo: 150 },
+      { id: 'xai-grok-4.5', provider: 'xai', model: 'Grok 4.5', input: 2, cachedInput: 0.3, output: 6, context: 500000, longThreshold: 128000, longInput: 4, longOutput: 9, tags: ['flagship'], sourceKind: 'scrape', history: [0.91, 0.91, 0.91, 0.91, 0.91, 1], daysAgo: 5 },
+      { id: 'xai-grok-4.5-fast', provider: 'xai', model: 'Grok 4.5 Fast', input: 0.2, cachedInput: null, output: 0.5, context: 2000000, tags: [], sourceKind: 'scrape', history: [1, 1, 1, 1, 1, 1], daysAgo: 5 },
+      { id: 'deepseek-v4', provider: 'deepseek', model: 'DeepSeek V4', input: 0.28, cachedInput: 0.028, output: 0.42, context: 128000, tags: [], sourceKind: 'api', history: [1, 1, 1, 1, 1, 1], daysAgo: 300 },
+      { id: 'deepseek-r2', provider: 'deepseek', model: 'DeepSeek R2', input: 0.55, cachedInput: null, output: 2.19, context: 128000, tags: ['flagship'], sourceKind: 'api', history: [1.25, 1.25, 1, 1, 1, 1], daysAgo: 70 },
+      { id: 'alibaba-qwen3-max', provider: 'alibaba', model: 'Qwen3-Max', input: 0.86, cachedInput: null, output: 3.44, context: 256000, tags: [], sourceKind: 'api', history: [1, 1, 1, 1, 1, 1], daysAgo: 300 },
+      { id: 'moonshot-kimi-k2', provider: 'moonshot', model: 'Kimi K2', input: 0.6, cachedInput: null, output: 2.5, context: 256000, tags: [], sourceKind: 'api', history: [1, 1, 1, 1, 1, 1], daysAgo: 300 },
+      { id: 'zhipu-glm-5.2', provider: 'zhipu', model: 'GLM-5.2', input: 1.4, cachedInput: null, output: 5.6, context: 128000, tags: [], sourceKind: 'scrape', history: [1.18, 1.18, 1.18, 1.18, 1, 1], daysAgo: 25 },
+      { id: 'bytedance-doubao-1.6-pro', provider: 'bytedance', model: 'Doubao 1.6 Pro', input: 0.11, cachedInput: null, output: 0.44, context: 256000, tags: [], sourceKind: 'api', history: [1, 1, 1, 1, 1, 1], daysAgo: 300 },
+      { id: 'baidu-ernie-5.0', provider: 'baidu', model: 'ERNIE 5.0', input: 0.14, cachedInput: null, output: 0.56, context: 128000, tags: [], sourceKind: 'api', history: [1, 1, 1, 1, 1, 1], daysAgo: 300 },
+    ];
+
+    const s = this.state;
+    const providerMap = {};
+    PROVIDERS.forEach(p => { providerMap[p.slug] = p; });
+
+    const fmtPrice = v => v == null ? '—' : v === 0 ? 'Free' : '$' + v.toFixed(v < 1 ? 3 : 2);
+    const fmtContext = n => !n ? '—' : n >= 1000000 ? (n / 1000000).toFixed(n % 1000000 ? 1 : 0) + 'M' : Math.round(n / 1000) + 'K';
+    const sourceLabel = { scrape: 'First-party', api: 'Via OpenRouter', catalog: 'Catalog' };
+
+    const scored = MODELS.map(m => ({ ...m, valueScore: (m.input ?? 0) + (m.output ?? 0) * 2 }));
+    const byValue = scored.slice().sort((a, b) => a.valueScore - b.valueScore);
+    const bestValueIds = new Set(byValue.slice(0, 3).map(m => m.id));
+    const topId = byValue[0].id;
+
+    let rows = scored;
+    if (s.selectedProviders.length) rows = rows.filter(m => s.selectedProviders.includes(m.provider));
+    if (s.flagshipOnly) rows = rows.filter(m => m.tags.includes('flagship'));
+    if (s.under1) rows = rows.filter(m => m.input != null && m.input < 1);
+    if (s.million) rows = rows.filter(m => m.context >= 1000000);
+    if (s.search.trim()) {
+      const q = s.search.trim().toLowerCase();
+      rows = rows.filter(m => m.model.toLowerCase().includes(q) || providerMap[m.provider].name.toLowerCase().includes(q));
+    }
+
+    const mean = arr => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
+    const avgInput = mean(rows.map(r => r.input).filter(v => v != null));
+    const avgOutput = mean(rows.map(r => r.output).filter(v => v != null));
+    const avgBlended = (avgInput + avgOutput) / 2;
+
+    const trendSeries = [0, 1, 2, 3, 4, 5].map(idx => mean(rows.map(r => r.input * ((r.history || [1, 1, 1, 1, 1, 1])[idx]))));
+    const tMin = Math.min(...trendSeries);
+    const tMax = Math.max(...trendSeries);
+    const tRange = (tMax - tMin) || (tMax * 0.1) || 1;
+    const chartY = v => 90 - ((v - tMin) / tRange) * 76 - 4;
+    const chartX = idx => (idx / (trendSeries.length - 1)) * 300 + 10;
+    const chartLinePoints = trendSeries.map((v, idx) => chartX(idx).toFixed(1) + ',' + chartY(v).toFixed(1)).join(' ');
+    const chartAreaPoints = chartLinePoints + ' ' + chartX(trendSeries.length - 1).toFixed(1) + ',90 10,90';
+    const trendPct = trendSeries[0] ? ((trendSeries[trendSeries.length - 1] - trendSeries[0]) / trendSeries[0]) * 100 : 0;
+    const chartPctColor = trendPct < -0.5 ? '#059669' : trendPct > 0.5 ? '#DC2626' : '#737373';
+    const chartPctBg = trendPct < -0.5 ? '#ECFDF5' : trendPct > 0.5 ? '#FEF2F2' : '#F5F5F5';
+
+    const sortFns = {
+      value: (a, b) => a.valueScore - b.valueScore,
+      input: (a, b) => (a.input ?? Infinity) - (b.input ?? Infinity),
+      output: (a, b) => (a.output ?? Infinity) - (b.output ?? Infinity),
+      context: (a, b) => (b.context ?? 0) - (a.context ?? 0),
+      provider: (a, b) => providerMap[a.provider].name.localeCompare(providerMap[b.provider].name),
+    };
+    rows = rows.slice().sort(sortFns[s.sort] || sortFns.value);
+
+    const displayRows = rows.map((m, i) => {
+      const provider = providerMap[m.provider];
+      const isBest = bestValueIds.has(m.id);
+      const isTop = m.id === topId;
+      const expanded = s.expandedId === m.id;
+      const bg = isBest ? 'rgba(5,150,105,0.06)' : (i % 2 === 1 ? '#FAFAFA' : '#FFFFFF');
+      let detailText;
+      if (m.longInput != null) {
+        detailText = 'Over ' + fmtContext(m.longThreshold) + ' tokens: input ' + fmtPrice(m.longInput) + ', output ' + fmtPrice(m.longOutput) + ' per 1M.';
+      } else {
+        detailText = fmtContext(m.context) + ' context window \u00b7 ' + sourceLabel[m.sourceKind] + (m.tags.includes('flagship') ? ' \u00b7 Flagship' : '') + '.';
+      }
+
+      const hist = m.history || [1, 1, 1, 1, 1, 1];
+      const histMin = Math.min(...hist);
+      const histMax = Math.max(...hist);
+      const range = histMax - histMin || 1;
+      const sparklinePoints = hist.map((v, idx) => {
+        const x = (idx / (hist.length - 1)) * 68 + 1;
+        const y = 18 - ((v - histMin) / range) * 16;
+        return x.toFixed(1) + ',' + y.toFixed(1);
+      }).join(' ');
+      const pctChange = ((hist[hist.length - 1] - hist[0]) / hist[0]) * 100;
+      const sparklineColor = pctChange < -0.5 ? '#059669' : pctChange > 0.5 ? '#DC2626' : '#A3A3A3';
+      let historyText;
+      if (Math.abs(pctChange) < 0.5) {
+        historyText = 'No price change in the last 90 days.';
+      } else {
+        historyText = 'Input price ' + (pctChange < 0 ? 'down ' : 'up ') + Math.abs(Math.round(pctChange)) + '% \u00b7 last changed ' + m.daysAgo + ' days ago.';
+      }
+      return {
+        id: m.id,
+        rank: i + 1,
+        providerName: provider.name,
+        dotStyle: { display: 'inline-block', width: '8px', height: '8px', borderRadius: '50%', background: provider.color },
+        model: m.model,
+        inputStr: fmtPrice(m.input),
+        cachedStr: fmtPrice(m.cachedInput),
+        outputStr: fmtPrice(m.output),
+        avgStr: fmtPrice((m.input + m.output) / 2),
+        contextStr: fmtContext(m.context),
+        notes: sourceLabel[m.sourceKind] + (m.tags.includes('flagship') ? ' \u00b7 Flagship' : ''),
+        isTop,
+        rowStyle: { background: bg, cursor: 'pointer', borderBottom: '1px solid #EEEEEE' },
+        stickyModelStyle: { position: 'sticky', left: '0px', zIndex: 1, background: bg, padding: '10px 12px', borderBottom: '1px solid #EEEEEE' },
+        stickyInputStyle: { position: 'sticky', left: '220px', zIndex: 1, background: bg, padding: '10px 12px', textAlign: 'right', fontWeight: 600, fontVariantNumeric: 'tabular-nums', color: '#171717', borderBottom: '1px solid #EEEEEE' },
+        expanded,
+        detailText,
+        sparklinePoints,
+        sparklineColor,
+        historyText,
+        toggle: () => this.toggleExpand(m.id),
+      };
+    });
+
+    const chipBase = active => ({
+      display: 'flex', alignItems: 'center', gap: '6px',
+      padding: '6px 12px', borderRadius: '999px',
+      border: active ? '1px solid #059669' : '1px solid #E5E5E5',
+      background: active ? 'rgba(5,150,105,0.08)' : '#FFFFFF',
+      color: active ? '#047857' : '#404040',
+      fontSize: '13px', fontWeight: 500, cursor: 'pointer', whiteSpace: 'nowrap',
+    });
+
+    const providerChips = PROVIDERS.map(p => {
+      const active = s.selectedProviders.includes(p.slug);
+      return {
+        name: p.name,
+        style: chipBase(active),
+        dotStyle: { display: 'inline-block', width: '7px', height: '7px', borderRadius: '50%', background: p.color },
+        toggle: () => this.toggleProvider(p.slug),
+      };
+    });
+
+    const toggleChip = (key, label) => ({
+      label,
+      style: chipBase(!!s[key]),
+      toggle: () => this.toggleFlag(key),
+    });
+
+    const updatedIso = '2026-08-10T13:08:53.675Z';
+    const diffMs = Date.now() - new Date(updatedIso).getTime();
+    const diffH = Math.max(1, Math.round(diffMs / 3600000));
+    const updatedLabel = diffH <= 1 ? '1 hour ago' : diffH < 24 ? diffH + ' hours ago' : Math.round(diffH / 24) + ' days ago';
+
+    const fmtCompact = n => n >= 1e9 ? (n / 1e9).toFixed(1) + 'B' : n >= 1e6 ? (n / 1e6).toFixed(1) + 'M' : n >= 1e3 ? (n / 1e3).toFixed(0) + 'K' : n.toFixed(0);
+    const fmtCost = v => v >= 1000 ? '$' + fmtCompact(v) : '$' + v.toFixed(2);
+    const FUN_ITEMS = [
+      { label: 'The Bible, cover to cover', tokens: 1000000 },
+      { label: 'The Harry Potter series (all 7 books)', tokens: 1500000 },
+      { label: 'All of English Wikipedia', tokens: 6400000000 },
+    ];
+    const funStats = FUN_ITEMS.map(item => ({
+      label: item.label,
+      tokenStr: fmtCompact(item.tokens),
+      costStr: fmtCost((item.tokens / 1000000) * avgInput),
+    }));
+
+    return {
+      funStats,
+      avgInputStr: fmtPrice(avgInput),
+      avgOutputStr: fmtPrice(avgOutput),
+      avgBlendedStr: fmtPrice(avgBlended),
+      chartLinePoints,
+      chartAreaPoints,
+      chartFill: 'rgba(5,150,105,0.12)',
+      chartPctLabel: (Math.abs(trendPct) < 0.5 ? 'Flat' : (trendPct < 0 ? '\u2193 ' : '\u2191 ') + Math.abs(trendPct).toFixed(1) + '%'),
+      chartPctStyle: { fontSize: '12px', fontWeight: 700, color: chartPctColor, background: chartPctBg, padding: '2px 8px', borderRadius: '999px' },
+      chartStartLabel: fmtPrice(trendSeries[0]) + ' then',
+      chartEndLabel: fmtPrice(trendSeries[trendSeries.length - 1]) + ' now',
+      providerChips,
+      flagshipChip: toggleChip('flagshipOnly', 'Flagship only'),
+      under1Chip: toggleChip('under1', 'Under $1 input'),
+      millionChip: toggleChip('million', '1M+ context'),
+      search: s.search,
+      onSearch: e => this.setSearch(e.target.value),
+      sort: s.sort,
+      onSort: e => this.setSort(e.target.value),
+      rows: displayRows,
+      resultCount: displayRows.length,
+      totalCount: MODELS.length,
+      updatedLabel,
+      copyLabel: s.copied ? 'Copied!' : 'Copy link',
+      onCopy: () => this.copyLink(),
+      onShare: () => this.shareLink(),
+    };
+  }
+}
+
+</script>
+</body>
+</html>
