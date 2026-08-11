@@ -84,12 +84,19 @@ export default async function HomePage() {
   let error: string | null = null
 
   try {
-    const [page, trends, providerRows, lastUpdated] = await Promise.all([
-      getPrices({ limit: 500, offset: 0, sort: 'input', direction: 'asc' }),
-      getPriceTrends(),
-      getProviders(),
-      getLastUpdated(),
-    ])
+    /*
+     * Read sequentially, not with Promise.all.
+     *
+     * Concurrent unstable_cache calls sharing a single database connection
+     * deadlock: the request simply never resolves, with no error logged. This
+     * page issues the most reads, which is why it was the one that hung while
+     * lighter pages were fine. The cost of doing them in series is about
+     * 100ms, since all but the first are served from cache.
+     */
+    const page = await getPrices({ limit: 500, offset: 0, sort: 'input', direction: 'asc' })
+    const providerRows = await getProviders()
+    const lastUpdated = await getLastUpdated()
+    const trends = await getPriceTrends()
 
     rows = page.rows.map((row) => ({ ...row, trend: trends.get(row.model_id) ?? null }))
     // Only offer providers that actually have models to show.

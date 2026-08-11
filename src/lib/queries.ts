@@ -108,7 +108,10 @@ async function getPricesUncached(filters: PriceFilters): Promise<PricesPage> {
   return {
     rows: records.map(toPriceRow),
     total,
-    lastUpdated: await getLastUpdated(),
+    // The uncached variant on purpose: this function is itself wrapped in
+    // unstable_cache, and a cached function awaiting another cached function
+    // deadlocks Next's data cache — the request simply never resolves.
+    lastUpdated: await getLastUpdatedUncached(),
   }
 }
 
@@ -190,10 +193,19 @@ export interface PriceTrend {
  * which honestly reflects "we weren't tracking it yet" rather than inventing
  * a change.
  */
-export const getPriceTrends = unstable_cache(getPriceTrendsUncached, ['price-trends'], {
-  revalidate: 300,
-  tags: ['prices'],
-})
+/**
+ * A Map cannot survive the data cache — it serialises to `{}` — so the cached
+ * layer stores entries as an array and the Map is rebuilt on the way out.
+ */
+const getPriceTrendEntries = unstable_cache(
+  async (days?: number, points?: number) => [...(await getPriceTrendsUncached(days, points))],
+  ['price-trends'],
+  { revalidate: 300, tags: ['prices'] },
+)
+
+export async function getPriceTrends(days = 90, points = 6): Promise<Map<string, PriceTrend>> {
+  return new Map(await getPriceTrendEntries(days, points))
+}
 
 async function getPriceTrendsUncached(
   days = 90,
