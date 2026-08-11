@@ -275,6 +275,28 @@ client component, so every filter and sort is instant with no round trip.
   sparkline
 - Filter state is mirrored into the URL, so Copy link / Share reproduce the view
 
+### Popular models panel
+
+216 rows across 9 columns is a lot to land on, so a compact panel sits above
+the table with at most 10 models and only the columns that answer "what does
+this cost": model, provider, input, output, context.
+
+The default set lives in [`data/featured.ts`](data/featured.ts) and is a
+curated editorial list, not a computed one. Usage data isn't in a pricing feed,
+so there is no honest way to derive "what's popular" from it — rather than
+dress a guess up as a ranking, the default is stated plainly in one file and
+every visitor can override it:
+
+- **★ any row** in the main table to pin it (capped at 10, with a notice at the
+  limit).
+- Choices persist in `localStorage`, so they survive a reload.
+- A `?pins=` URL parameter wins over stored preferences, so a shared link shows
+  the sender's selection rather than the recipient's.
+- **Reset to defaults** clears the override.
+
+Ids that no longer resolve are skipped silently, so a model disappearing from a
+vendor's page shortens the panel rather than breaking it.
+
 Four things were changed from the prototype where it would have shipped wrong:
 
 | Prototype | Why it changed |

@@ -84,7 +84,20 @@ function parseFilters(
   const modality = single('modality').toLowerCase()
   const sort = single('sort') as SortKey
 
+  // Absent means "no explicit choice", which lets the client fall back to
+  // stored preferences and then the curated default. An empty `pins=` is a
+  // real choice — the sender pinned nothing — so it stays an empty array.
+  const rawPins = params.pins === undefined ? null : single('pins')
+  const pins =
+    rawPins === null
+      ? null
+      : rawPins
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean)
+
   return {
+    pins,
     providers,
     flagship: single('flagship') === '1',
     under1: single('under1') === '1',

@@ -10,6 +10,8 @@ import {
   formatRelativeTime,
 } from '@/lib/format.ts'
 import type { PriceRowV1 } from '@/lib/types.ts'
+import { DEFAULT_FEATURED_MODEL_IDS, MAX_FEATURED } from '../../data/featured.ts'
+import { FeaturedModels } from './featured-models.tsx'
 import { providerColor, SOURCE_LABELS } from './provider-colors.ts'
 import { Sparkline, TrendChart } from './sparkline.tsx'
 
@@ -29,6 +31,9 @@ export interface ExplorerProps {
   initial: InitialFilters
 }
 
+/** localStorage key for the user's pinned models. Versioned so the shape can change. */
+const PINS_STORAGE_KEY = 'costoftoken.pins.v1'
+
 export interface InitialFilters {
   providers: string[]
   flagship: boolean
@@ -37,6 +42,8 @@ export interface InitialFilters {
   modality: string
   search: string
   sort: SortKey
+  /** Pinned model ids from the URL, or null to fall back to storage/defaults. */
+  pins: string[] | null
 }
 
 type SortKey = 'value' | 'input' | 'output' | 'context' | 'provider'
@@ -68,6 +75,71 @@ export function PriceExplorer({ rows, providers, updatedAt, initial }: ExplorerP
   const [sort, setSort] = useState<SortKey>(initial.sort)
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
+
+  // `null` means "no explicit choice yet", which renders the curated default.
+  // A URL parameter wins over stored preferences so a shared link shows the
+  // sender's selection rather than the recipient's.
+  const [pins, setPins] = useState<string[] | null>(initial.pins)
+  const [pinNotice, setPinNotice] = useState<string | null>(null)
+
+  // Read stored pins after mount, never during render: localStorage does not
+  // exist on the server, so touching it in the initial state would make the
+  // server and client markup disagree.
+  useEffect(() => {
+    if (initial.pins !== null) return
+    try {
+      const stored = window.localStorage.getItem(PINS_STORAGE_KEY)
+      if (stored) {
+        const parsed = JSON.parse(stored) as unknown
+        if (Array.isArray(parsed) && parsed.every((v) => typeof v === 'string')) {
+          setPins(parsed.slice(0, MAX_FEATURED))
+        }
+      }
+    } catch {
+      // Corrupt or unavailable storage (private mode) just means defaults.
+    }
+  }, [initial.pins])
+
+  const isCustomPins = pins !== null
+  const effectivePins = pins ?? [...DEFAULT_FEATURED_MODEL_IDS]
+
+  const persistPins = useCallback((next: string[] | null) => {
+    setPins(next)
+    try {
+      if (next === null) window.localStorage.removeItem(PINS_STORAGE_KEY)
+      else window.localStorage.setItem(PINS_STORAGE_KEY, JSON.stringify(next))
+    } catch {
+      // Non-fatal: the selection still applies for this session.
+    }
+  }, [])
+
+  const togglePin = useCallback(
+    (modelId: string) => {
+      const current = pins ?? [...DEFAULT_FEATURED_MODEL_IDS]
+      if (current.includes(modelId)) {
+        persistPins(current.filter((id) => id !== modelId))
+        return
+      }
+      if (current.length >= MAX_FEATURED) {
+        setPinNotice(`Popular models is capped at ${MAX_FEATURED}. Remove one first.`)
+        window.setTimeout(() => setPinNotice(null), 2600)
+        return
+      }
+      persistPins([...current, modelId])
+    },
+    [pins, persistPins],
+  )
+
+  // Resolve ids to rows, preserving the pinned order. Ids that no longer exist
+  // are dropped rather than rendered as blanks.
+  const featuredRows = useMemo(() => {
+    const byId = new Map(rows.map((row) => [row.model_id, row]))
+    return effectivePins
+      .map((id) => byId.get(id))
+      .filter((row): row is ExplorerRow => row !== undefined)
+  }, [rows, effectivePins])
+
+  const pinnedSet = useMemo(() => new Set(effectivePins), [effectivePins])
 
   // --- filtering ----------------------------------------------------------
   const filtered = useMemo(() => {
@@ -194,8 +266,9 @@ export function PriceExplorer({ rows, providers, updatedAt, initial }: ExplorerP
     if (modality) params.set('modality', modality)
     if (search.trim()) params.set('q', search.trim())
     if (sort !== 'value') params.set('sort', sort)
+    if (pins !== null) params.set('pins', pins.join(','))
     return params.toString()
-  }, [selectedProviders, flagshipOnly, under1, million, modality, search, sort])
+  }, [selectedProviders, flagshipOnly, under1, million, modality, search, sort, pins])
 
   // Keep the address bar in sync so a reload or a copied URL restores the view.
   useEffect(() => {
@@ -245,6 +318,19 @@ export function PriceExplorer({ rows, providers, updatedAt, initial }: ExplorerP
   return (
     <div className="mx-auto max-w-[1120px] px-5 pb-14 pt-7">
       <Header updatedAt={updatedAt} />
+
+      <FeaturedModels
+        rows={featuredRows}
+        isCustom={isCustomPins}
+        onUnpin={togglePin}
+        onReset={() => persistPins(null)}
+      />
+
+      {pinNotice && (
+        <p role="status" className="mb-3 text-[13px] text-amber-400">
+          {pinNotice}
+        </p>
+      )}
 
       <div className="mb-4 flex flex-wrap gap-3.5">
         <StatsCard stats={stats} count={filtered.length} />
@@ -380,6 +466,8 @@ export function PriceExplorer({ rows, providers, updatedAt, initial }: ExplorerP
 
       <PriceTable
         entries={sorted}
+        pinnedSet={pinnedSet}
+        onTogglePin={togglePin}
         bestValueIds={bestValueIds}
         topValueId={topValueId}
         expandedId={expandedId}
@@ -513,12 +601,16 @@ interface Entry {
 
 function PriceTable({
   entries,
+  pinnedSet,
+  onTogglePin,
   bestValueIds,
   topValueId,
   expandedId,
   onToggle,
 }: {
   entries: Entry[]
+  pinnedSet: Set<string>
+  onTogglePin: (id: string) => void
   bestValueIds: Set<string>
   topValueId: string | null
   expandedId: string | null
@@ -590,6 +682,8 @@ function PriceTable({
             <PriceRow
               key={`${entry.row.provider}/${entry.row.model_id}`}
               entry={entry}
+              pinned={pinnedSet.has(entry.row.model_id)}
+              onTogglePin={onTogglePin}
               rank={index + 1}
               zebra={index % 2 === 1}
               isBest={bestValueIds.has(entry.row.model_id)}
@@ -609,6 +703,8 @@ const TH =
 
 function PriceRow({
   entry,
+  pinned,
+  onTogglePin,
   rank,
   zebra,
   isBest,
@@ -617,6 +713,8 @@ function PriceRow({
   onToggle,
 }: {
   entry: Entry
+  pinned: boolean
+  onTogglePin: (id: string) => void
   rank: number
   zebra: boolean
   isBest: boolean
@@ -649,6 +747,25 @@ function PriceRow({
         </td>
         <td style={cellStyle} className="sticky left-11 z-10 px-3 py-2.5">
           <div className="flex flex-wrap items-center gap-1.5">
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation()
+                onTogglePin(row.model_id)
+              }}
+              aria-pressed={pinned}
+              aria-label={
+                pinned
+                  ? `Remove ${row.display_name} from popular models`
+                  : `Add ${row.display_name} to popular models`
+              }
+              title={pinned ? 'Remove from Popular models' : 'Add to Popular models'}
+              className={`shrink-0 rounded text-base leading-none focus-visible:outline-2 focus-visible:outline-emerald-600 ${
+                pinned ? 'text-amber-500' : 'text-neutral-300 hover:text-neutral-500'
+              }`}
+            >
+              {pinned ? '★' : '☆'}
+            </button>
             {/* The row is clickable for mouse users, but the toggle is a real
                 button so it's reachable and announced for keyboard users. */}
             <button

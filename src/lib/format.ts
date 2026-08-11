@@ -14,8 +14,10 @@ export function formatPrice(value: number | null | undefined): string {
 export function formatContext(tokens: number | null | undefined): string {
   if (!tokens) return '—'
   if (tokens >= 1_000_000) {
-    const millions = tokens / 1_000_000
-    return `${millions.toFixed(tokens % 1_000_000 === 0 ? 0 : 1)}M`
+    // Round first, then drop a trailing ".0": 1,048,576 and 1,000,000 are the
+    // same context window as far as a reader is concerned, so both read "1M".
+    const millions = Math.round((tokens / 1_000_000) * 10) / 10
+    return `${Number.isInteger(millions) ? millions : millions.toFixed(1)}M`
   }
   return `${Math.round(tokens / 1_000)}K`
 }

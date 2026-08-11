@@ -64,6 +64,7 @@ export const anthropicExtractor: Extractor = {
         if (!input && !output) continue
 
         const cached = parsePricePerMillion(cell(row, cachedCol), unitHint)
+        const cleanName = toDisplayName(displayName)
         const modelId = toModelId(displayName)
         // First table wins — see the note in openai.ts on tier tabs.
         if (models.has(modelId)) continue
@@ -71,7 +72,7 @@ export const anthropicExtractor: Extractor = {
         models.set(modelId, {
           providerSlug: 'anthropic',
           modelId,
-          displayName,
+          displayName: cleanName,
           contextWindow: null, // supplied by the catalog
           maxOutputTokens: null,
           longContextThreshold: null,
@@ -101,6 +102,21 @@ export const anthropicExtractor: Extractor = {
 
     return [...models.values()]
   },
+}
+
+/**
+ * Strip the validity-window qualifier from a display name.
+ *
+ * The table labels the currently-billed row "Claude Sonnet 5 (through August
+ * 31, 2026)". That row *is* today's price, so the qualifier adds nothing to a
+ * price comparison and makes the name wrap awkwardly in the table.
+ */
+function toDisplayName(raw: string): string {
+  return raw
+    .replace(/\(.*?\)/g, ' ')
+    .replace(/\b(through|starting|until|from|effective)\b.*$/i, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
 }
 
 /**
