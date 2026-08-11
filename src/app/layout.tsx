@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import { SiteNav } from '@/components/site-nav.tsx'
 import { SITE, SITE_URL } from '@/lib/seo.ts'
 import './globals.css'
 
@@ -68,7 +69,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         the background. Body text colour is set explicitly rather than left to
         inherit, so anything added outside a card is legible by default.
       */}
-      <body className="min-h-screen bg-[#F7F6F4] text-neutral-900 antialiased">{children}</body>
+      <body className="min-h-screen bg-[#F7F6F4] text-neutral-900 antialiased">
+        {/* In the layout so every route carries the same navigation. */}
+        <SiteNav />
+        {children}
+      </body>
     </html>
   )
 }
