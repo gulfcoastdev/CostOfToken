@@ -34,8 +34,14 @@ export function middleware(request: NextRequest) {
   // client by falling back to the browser's timezone.
   const country = request.headers.get('x-vercel-ip-country')?.toUpperCase()
 
-  if (country) {
-    response.cookies.set(REGION_COOKIE, CONSENT_REQUIRED.has(country) ? 'eu' : 'other', {
+  // Only write when the value would change. Re-sending an identical cookie on
+  // every response is pure overhead, and it also means a value already present
+  // is left alone rather than being clobbered on each navigation.
+  const region = country ? (CONSENT_REQUIRED.has(country) ? 'eu' : 'other') : null
+  const existing = request.cookies.get(REGION_COOKIE)?.value
+
+  if (region && region !== existing) {
+    response.cookies.set(REGION_COOKIE, region, {
       // Readable by the banner script; it carries no personal data, only a
       // coarse yes/no about which rules apply.
       httpOnly: false,
