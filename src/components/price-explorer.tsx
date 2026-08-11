@@ -935,6 +935,12 @@ function Footer() {
         <code className="rounded bg-neutral-200 px-1.5 py-0.5 text-[11px] text-neutral-700">
           GET /api/v1/prices
         </code>
+        <br />
+        Part of the{' '}
+        <a href="/network" className="underline underline-offset-2 hover:text-neutral-800">
+          Gulf Coast Dev network
+        </a>
+        .
       </p>
     </footer>
   )

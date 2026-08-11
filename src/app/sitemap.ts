@@ -31,6 +31,12 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
         changeFrequency: 'daily',
         priority: 1,
       },
+      {
+        url: absoluteUrl('/network'),
+        lastModified: homeModified,
+        changeFrequency: 'monthly' as const,
+        priority: 0.3,
+      },
       ...providers
         .filter((provider) => provider.model_count > 0)
         .map((provider) => ({

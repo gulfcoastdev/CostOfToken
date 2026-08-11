@@ -216,6 +216,23 @@ costs is worth as much as ranking:
 Set `NEXT_PUBLIC_SITE_URL` in the deployment environment; canonical tags,
 sitemap URLs and OG tags all derive from it.
 
+### Network
+
+`/network` states that this site is part of the Gulf Coast Dev network and
+lists the sibling projects, with a link in the footer of every page.
+
+The source site offers a script embed, an iframe and a JSON feed. The JSON is
+consumed server-side and rendered with this site's own components: a
+third-party script would add a blocking request, shift layout as it sized
+itself, and hide the content behind JavaScript where a crawler may never see
+it. Reading the feed on the server keeps the page fast, consistent, and
+indexable.
+
+The feed is treated as untrusted external data — fields are length-capped and
+every URL is verified to be `http(s)` before it reaches an `href`, so a
+malformed or compromised feed cannot inject a `javascript:` link. If the feed
+is unreachable the page still renders, linking to the network directly.
+
 ## Data model
 
 `providers` → `models` → `prices` (one current row per model), plus append-only

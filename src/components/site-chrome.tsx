@@ -59,6 +59,13 @@ export function SiteFooter() {
           llms.txt
         </a>
       </p>
+      <p className="m-0 mt-2">
+        Part of the{' '}
+        <Link href="/network" className="underline underline-offset-2 hover:text-neutral-800">
+          Gulf Coast Dev network
+        </Link>
+        .
+      </p>
     </footer>
   )
 }
