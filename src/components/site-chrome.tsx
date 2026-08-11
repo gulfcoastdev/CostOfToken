@@ -38,33 +38,65 @@ export function PageShell({ children }: { children: React.ReactNode }) {
 }
 
 export function SiteFooter() {
+  const year = new Date().getFullYear()
+
   return (
     <footer className="mt-10 border-t border-neutral-300 pt-5 text-[12.5px] text-neutral-500">
+      <nav aria-label="Footer" className="mb-4 flex flex-wrap gap-x-4 gap-y-2">
+        {[
+          { href: '/', label: 'All models' },
+          { href: '/providers', label: 'Providers' },
+          { href: '/sources', label: 'Data sources' },
+          { href: '/api-docs', label: 'API' },
+          { href: '/about', label: 'About' },
+          { href: '/terms', label: 'Terms' },
+        ].map((link) => (
+          <Link
+            key={link.href}
+            href={link.href}
+            className="font-medium underline underline-offset-2 hover:text-neutral-800"
+          >
+            {link.label}
+          </Link>
+        ))}
+        <a href="/llms.txt" className="font-medium underline underline-offset-2 hover:text-neutral-800">
+          llms.txt
+        </a>
+      </nav>
+
       <p className="m-0 max-w-2xl">
         Prices are read daily from each vendor&apos;s published pricing page where one is machine
         readable, and from the OpenRouter catalogue otherwise (marked <em>Via OpenRouter</em> — a
         reseller, whose prices can differ from the vendor&apos;s own). Standard tier only; batch and
-        priority tiers are excluded. Always confirm against the vendor before committing spend.
+        priority tiers are excluded.{' '}
+        <Link href="/sources" className="underline underline-offset-2 hover:text-neutral-800">
+          How this data is collected
+        </Link>
+        . Always confirm against the provider before committing spend.
       </p>
-      <p className="m-0 mt-2">
-        <Link href="/" className="underline underline-offset-2 hover:text-neutral-800">
-          All models
-        </Link>{' '}
-        ·{' '}
-        <a href="/api/v1/prices" className="underline underline-offset-2 hover:text-neutral-800">
-          JSON API
+
+      <p className="m-0 mt-3">
+        Model and company names are trademarks of their respective owners and are used
+        descriptively. CostOfToken is independent and not affiliated with any provider listed.
+      </p>
+
+      <p className="m-0 mt-3">
+        © {year} Gulf Coast Dev LLC ·{' '}
+        <a
+          href="https://cryptodev.info/network.php"
+          target="_blank"
+          rel="noopener"
+          className="underline underline-offset-2 hover:text-neutral-800"
+        >
+          Gulf Coast Dev
         </a>{' '}
         ·{' '}
-        <a href="/llms.txt" className="underline underline-offset-2 hover:text-neutral-800">
-          llms.txt
+        <a
+          href="mailto:gulfcoastdevs@gmail.com"
+          className="underline underline-offset-2 hover:text-neutral-800"
+        >
+          gulfcoastdevs@gmail.com
         </a>
-      </p>
-      <p className="m-0 mt-2">
-        Part of the{' '}
-        <Link href="/network" className="underline underline-offset-2 hover:text-neutral-800">
-          Gulf Coast Dev network
-        </Link>
-        .
       </p>
     </footer>
   )

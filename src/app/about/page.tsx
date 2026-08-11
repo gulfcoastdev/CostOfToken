@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import Link from 'next/link'
 import { Breadcrumbs, JsonLd, PageShell, SiteFooter } from '@/components/site-chrome.tsx'
 import { getNetworkFeed, NETWORK_HOME } from '@/lib/network.ts'
 import { absoluteUrl, breadcrumbSchema, SITE } from '@/lib/seo.ts'
@@ -6,18 +7,18 @@ import { absoluteUrl, breadcrumbSchema, SITE } from '@/lib/seo.ts'
 /** Matches the feed's own ten-minute cache. */
 export const revalidate = 600
 
-const TITLE = 'Part of the Gulf Coast Dev network'
+const TITLE = 'About CostOfToken'
 const DESCRIPTION =
-  'CostOfToken is built and maintained by Gulf Coast Dev, alongside a set of independent products and directories. See the rest of the network.'
+  'Who builds CostOfToken and why: a daily-updated, independently maintained comparison of LLM API pricing from Gulf Coast Dev.'
 
 export const metadata: Metadata = {
   title: TITLE,
   description: DESCRIPTION,
-  alternates: { canonical: '/network' },
+  alternates: { canonical: '/about' },
   openGraph: {
     title: `${TITLE} — ${SITE.name}`,
     description: DESCRIPTION,
-    url: '/network',
+    url: '/about',
     type: 'website',
   },
   twitter: { card: 'summary_large_image', title: TITLE, description: DESCRIPTION },
@@ -32,13 +33,13 @@ export default async function NetworkPage() {
         nodes={[
           breadcrumbSchema([
             { name: 'LLM pricing', path: '/' },
-            { name: 'Network', path: '/network' },
+            { name: 'About', path: '/about' },
           ]),
           {
             '@type': 'WebPage',
-            '@id': absoluteUrl('/network#page'),
+            '@id': absoluteUrl('/about#page'),
             name: TITLE,
-            url: absoluteUrl('/network'),
+            url: absoluteUrl('/about'),
             description: DESCRIPTION,
             isPartOf: { '@id': absoluteUrl('/#website') },
             ...(feed
@@ -61,12 +62,40 @@ export default async function NetworkPage() {
         ]}
       />
 
-      <Breadcrumbs trail={[{ name: 'LLM pricing', path: '/' }, { name: 'Network' }]} />
+      <Breadcrumbs trail={[{ name: 'LLM pricing', path: '/' }, { name: 'About' }]} />
 
       <header className="mb-7">
         <h1 className="m-0 text-3xl font-bold tracking-tight text-neutral-950">{TITLE}</h1>
         <p className="mt-2 max-w-3xl text-[15px] leading-relaxed text-neutral-700">
-          CostOfToken is one of several products built and maintained by{' '}
+          CostOfToken tracks what large language model APIs actually cost. Prices are read from
+          each provider&apos;s own published pricing every day, normalized to USD per 1M tokens so
+          models can be compared directly, and recorded only when a number really changes.
+        </p>
+        <p className="mt-3 max-w-3xl text-[15px] leading-relaxed text-neutral-700">
+          It exists because pricing lives on ten different pages in ten different shapes, several of
+          which quote per-1K tokens, bury the standard rate behind a tab, or price long prompts
+          differently without saying so on the same line. Answering &ldquo;what will this cost
+          me&rdquo; should not require reading ten vendor pages.
+        </p>
+        <p className="mt-3 max-w-3xl text-[15px] leading-relaxed text-neutral-700">
+          The data and the methodology are open:{' '}
+          <Link href="/sources" className="font-medium text-emerald-700 underline underline-offset-2">
+            every source is listed
+          </Link>
+          , and everything is available through a{' '}
+          <Link href="/api-docs" className="font-medium text-emerald-700 underline underline-offset-2">
+            free JSON API
+          </Link>
+          .
+        </p>
+      </header>
+
+      <section className="mb-8 rounded-xl border border-neutral-200 bg-white px-5 py-4">
+        <h2 className="m-0 text-lg font-semibold tracking-tight text-neutral-950">
+          Who builds it
+        </h2>
+        <p className="m-0 mt-1.5 text-[15px] leading-relaxed text-neutral-700">
+          CostOfToken is built and maintained by{' '}
           <a
             href={NETWORK_HOME}
             target="_blank"
@@ -75,10 +104,10 @@ export default async function NetworkPage() {
           >
             Gulf Coast Dev
           </a>
-          . The same team runs the sites below — independent products rather than client work, each
-          maintained for the long term.
+          , a small independent software studio. It is a product we own and keep running, not client
+          work — which is why it is free, has no signup, and is not trying to sell you an LLM.
         </p>
-      </header>
+      </section>
 
       {feed ? (
         <>

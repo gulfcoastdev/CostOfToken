@@ -936,11 +936,17 @@ function Footer() {
           GET /api/v1/prices
         </code>
         <br />
-        Part of the{' '}
-        <a href="/network" className="underline underline-offset-2 hover:text-neutral-800">
-          Gulf Coast Dev network
+        <a href="/sources" className="underline underline-offset-2 hover:text-neutral-800">
+          Data sources
+        </a>{' '}
+        ·{' '}
+        <a href="/about" className="underline underline-offset-2 hover:text-neutral-800">
+          About
+        </a>{' '}
+        ·{' '}
+        <a href="/terms" className="underline underline-offset-2 hover:text-neutral-800">
+          Terms
         </a>
-        .
       </p>
     </footer>
   )
