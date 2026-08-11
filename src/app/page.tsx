@@ -1,10 +1,6 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
-import {
-  PriceExplorer,
-  type ExplorerRow,
-  type InitialFilters,
-} from '@/components/price-explorer.tsx'
+import { PriceExplorer, type ExplorerRow } from '@/components/price-explorer.tsx'
 import { JsonLd } from '@/components/site-chrome.tsx'
 import { getBrand } from '@/lib/provider-brands.ts'
 import { getLastUpdated, getPriceTrends, getPrices, getProviders } from '@/lib/queries.ts'
@@ -57,23 +53,20 @@ const HOME_FAQS = [
  * The comparison table.
  *
  * Data is read on the server straight from Postgres and handed to a client
- * component for filtering and sorting. The whole set is sent at once — 150-odd
+ * component for filtering and sorting. The whole set is sent at once — 200-odd
  * rows is a few tens of KB — so every filter and sort is instant with no
- * round trip, which is the interaction the design calls for.
+ * round trip.
+ *
+ * Deliberately does NOT read searchParams. Doing so opts the page out of
+ * static rendering, which made it the only page that queried the database on
+ * every single request — enough to saturate the connection pooler under load
+ * while every other page was served from cache. The filter parameters only
+ * seed client state, so the client reads them from the URL itself and this
+ * page stays cached.
  */
 export const revalidate = 300
 
-type SortKey = 'value' | 'input' | 'output' | 'context' | 'provider'
-const SORT_KEYS: SortKey[] = ['value', 'input', 'output', 'context', 'provider']
-const MODALITIES = ['text', 'vision', 'audio', 'video', 'image']
-
-export default async function HomePage({
-  searchParams,
-}: {
-  searchParams: Promise<Record<string, string | string[] | undefined>>
-}) {
-  const params = await searchParams
-
+export default async function HomePage() {
   let rows: ExplorerRow[] = []
   let providers: Array<{ slug: string; name: string }> = []
   let updatedAt: string | null = null
@@ -117,7 +110,7 @@ export default async function HomePage({
         rows={rows}
         providers={providers}
         updatedAt={updatedAt}
-        initial={parseFilters(params, providers.map((p) => p.slug))}
+        providerSlugs={providers.map((p) => p.slug)}
       />
       <div className="mx-auto max-w-[1120px] px-5 pb-14">
         <ProviderLinks providers={providers} />
@@ -178,49 +171,6 @@ function HomeFaq() {
       </dl>
     </section>
   )
-}
-
-/** Read shareable filter state out of the URL so a copied link restores the view. */
-function parseFilters(
-  params: Record<string, string | string[] | undefined>,
-  knownProviders: string[],
-): InitialFilters {
-  const single = (key: string): string => {
-    const value = params[key]
-    return (Array.isArray(value) ? value[0] : value) ?? ''
-  }
-
-  const providerSet = new Set(knownProviders)
-  const providers = single('providers')
-    .split(',')
-    .map((s) => s.trim().toLowerCase())
-    .filter((s) => providerSet.has(s))
-
-  const modality = single('modality').toLowerCase()
-  const sort = single('sort') as SortKey
-
-  // Absent means "no explicit choice", which lets the client fall back to
-  // stored preferences and then the curated default. An empty `pins=` is a
-  // real choice — the sender pinned nothing — so it stays an empty array.
-  const rawPins = params.pins === undefined ? null : single('pins')
-  const pins =
-    rawPins === null
-      ? null
-      : rawPins
-          .split(',')
-          .map((s) => s.trim())
-          .filter(Boolean)
-
-  return {
-    pins,
-    providers,
-    flagship: single('flagship') === '1',
-    under1: single('under1') === '1',
-    million: single('million') === '1',
-    modality: MODALITIES.includes(modality) ? modality : '',
-    search: single('q'),
-    sort: SORT_KEYS.includes(sort) ? sort : 'value',
-  }
 }
 
 function SetupNotice({ error }: { error: string | null }) {

@@ -28,7 +28,8 @@ export interface ExplorerProps {
   rows: ExplorerRow[]
   providers: ProviderOption[]
   updatedAt: string | null
-  initial: InitialFilters
+  /** Valid provider slugs, used to discard junk from the URL. */
+  providerSlugs: string[]
 }
 
 /** localStorage key for the user's pinned models. Versioned so the shape can change. */
@@ -56,8 +57,6 @@ const SORT_LABELS: Array<{ value: SortKey; label: string }> = [
   { value: 'provider', label: 'Sort: Provider A–Z' },
 ]
 
-const MODALITIES = ['text', 'vision', 'audio', 'video', 'image']
-
 /** Approximate token counts, for illustrating what an average prompt costs. */
 const FUN_ITEMS = [
   { label: 'The Bible, cover to cover', tokens: 1_000_000 },
@@ -65,28 +64,95 @@ const FUN_ITEMS = [
   { label: 'All of English Wikipedia', tokens: 6_400_000_000 },
 ]
 
-export function PriceExplorer({ rows, providers, updatedAt, initial }: ExplorerProps) {
-  const [selectedProviders, setSelectedProviders] = useState<string[]>(initial.providers)
-  const [flagshipOnly, setFlagshipOnly] = useState(initial.flagship)
-  const [under1, setUnder1] = useState(initial.under1)
-  const [million, setMillion] = useState(initial.million)
-  const [modality, setModality] = useState(initial.modality)
-  const [search, setSearch] = useState(initial.search)
-  const [sort, setSort] = useState<SortKey>(initial.sort)
+const MODALITIES = ['text', 'vision', 'audio', 'video', 'image']
+const SORT_KEYS: SortKey[] = ['value', 'input', 'output', 'context', 'provider']
+
+/**
+ * Read filter state from the URL.
+ *
+ * Done on the client rather than from server-side searchParams: reading them
+ * on the server would make this page dynamic, and it is the busiest page on
+ * the site. Everything here only seeds local state, so the brief moment before
+ * it applies costs nothing.
+ */
+function readUrlFilters(providerSlugs: string[]): InitialFilters {
+  const empty: InitialFilters = {
+    providers: [],
+    flagship: false,
+    under1: false,
+    million: false,
+    modality: '',
+    search: '',
+    sort: 'value',
+    pins: null,
+  }
+  if (typeof window === 'undefined') return empty
+
+  const params = new URLSearchParams(window.location.search)
+  const known = new Set(providerSlugs)
+  const modality = (params.get('modality') ?? '').toLowerCase()
+  const sort = params.get('sort') as SortKey | null
+  const rawPins = params.get('pins')
+
+  return {
+    providers: (params.get('providers') ?? '')
+      .split(',')
+      .map((value) => value.trim().toLowerCase())
+      .filter((value) => known.has(value)),
+    flagship: params.get('flagship') === '1',
+    under1: params.get('under1') === '1',
+    million: params.get('million') === '1',
+    modality: MODALITIES.includes(modality) ? modality : '',
+    search: params.get('q') ?? '',
+    sort: sort && SORT_KEYS.includes(sort) ? sort : 'value',
+    // Absent means no explicit choice, so stored pins still apply. An empty
+    // value is a real choice: the sender pinned nothing.
+    pins:
+      rawPins === null
+        ? null
+        : rawPins.split(',').map((v) => v.trim()).filter(Boolean),
+  }
+}
+
+export function PriceExplorer({ rows, providers, updatedAt, providerSlugs }: ExplorerProps) {
+  // Server and first client render must agree, so state starts at the defaults
+  // and the URL is applied in an effect below.
+  const [selectedProviders, setSelectedProviders] = useState<string[]>([])
+  const [flagshipOnly, setFlagshipOnly] = useState(false)
+  const [under1, setUnder1] = useState(false)
+  const [million, setMillion] = useState(false)
+  const [modality, setModality] = useState('')
+  const [search, setSearch] = useState('')
+  const [sort, setSort] = useState<SortKey>('value')
+  const [urlApplied, setUrlApplied] = useState(false)
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
 
   // `null` means "no explicit choice yet", which renders the curated default.
   // A URL parameter wins over stored preferences so a shared link shows the
   // sender's selection rather than the recipient's.
-  const [pins, setPins] = useState<string[] | null>(initial.pins)
+  const [pins, setPins] = useState<string[] | null>(null)
   const [pinNotice, setPinNotice] = useState<string | null>(null)
+
+  // Apply the URL once, on mount.
+  useEffect(() => {
+    const fromUrl = readUrlFilters(providerSlugs)
+    setSelectedProviders(fromUrl.providers)
+    setFlagshipOnly(fromUrl.flagship)
+    setUnder1(fromUrl.under1)
+    setMillion(fromUrl.million)
+    setModality(fromUrl.modality)
+    setSearch(fromUrl.search)
+    setSort(fromUrl.sort)
+    if (fromUrl.pins !== null) setPins(fromUrl.pins)
+    setUrlApplied(true)
+  }, [providerSlugs])
 
   // Read stored pins after mount, never during render: localStorage does not
   // exist on the server, so touching it in the initial state would make the
   // server and client markup disagree.
   useEffect(() => {
-    if (initial.pins !== null) return
+    if (!urlApplied || pins !== null) return
     try {
       const stored = window.localStorage.getItem(PINS_STORAGE_KEY)
       if (stored) {
@@ -98,7 +164,9 @@ export function PriceExplorer({ rows, providers, updatedAt, initial }: ExplorerP
     } catch {
       // Corrupt or unavailable storage (private mode) just means defaults.
     }
-  }, [initial.pins])
+    // Runs once the URL has been read; pins from the URL win.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [urlApplied])
 
   const isCustomPins = pins !== null
   const effectivePins = pins ?? [...DEFAULT_FEATURED_MODEL_IDS]
@@ -272,11 +340,11 @@ export function PriceExplorer({ rows, providers, updatedAt, initial }: ExplorerP
 
   // Keep the address bar in sync so a reload or a copied URL restores the view.
   useEffect(() => {
-    if (typeof window === 'undefined') return
+    if (typeof window === 'undefined' || !urlApplied) return
     const query = buildQuery()
     const url = query ? `${window.location.pathname}?${query}` : window.location.pathname
     window.history.replaceState(null, '', url)
-  }, [buildQuery])
+  }, [buildQuery, urlApplied])
 
   const copyLink = useCallback(() => {
     if (typeof window === 'undefined') return
@@ -285,7 +353,7 @@ export function PriceExplorer({ rows, providers, updatedAt, initial }: ExplorerP
     navigator.clipboard?.writeText(url).catch(() => {})
     setCopied(true)
     window.setTimeout(() => setCopied(false), 1500)
-  }, [buildQuery])
+  }, [buildQuery, urlApplied])
 
   const shareLink = useCallback(() => {
     if (typeof window === 'undefined') return
