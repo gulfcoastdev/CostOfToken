@@ -134,6 +134,22 @@ Tracked providers with active model counts — intended for building filter UIs.
 
 ---
 
+## Cron status codes
+
+`/api/cron/update-prices` returns:
+
+| Status | Meaning |
+| --- | --- |
+| 200 | at least one provider succeeded |
+| 409 | a provider's result was **blocked** by anomaly detection — the scrape ran, but the result was rejected as untrustworthy and previous prices were kept |
+| 502 | every provider failed |
+
+Both 409 and 502 are worth alerting on. 409 in particular means the data is
+stale-but-correct rather than fresh-but-wrong, which is the safer failure but
+still needs a human to look at the extractor.
+
+---
+
 ## Rate limiting
 
 - **Anonymous:** 60 requests/hour per IP (set by `RATE_LIMIT_ANON_PER_HOUR`).

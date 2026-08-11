@@ -175,6 +175,14 @@ create table if not exists extraction_runs (
 create index if not exists extraction_runs_recent_idx on extraction_runs (started_at desc);
 create index if not exists extraction_runs_run_idx    on extraction_runs (run_id);
 
+-- 'blocked' means the extraction succeeded but anomaly detection rejected the
+-- result, so nothing was written and the previous prices still stand.
+alter table extraction_runs drop constraint if exists extraction_runs_status_check;
+alter table extraction_runs add constraint extraction_runs_status_check
+  check (status in ('ok', 'partial', 'failed', 'skipped', 'blocked'));
+
+alter table extraction_runs add column if not exists anomalies jsonb;
+
 -- ---------------------------------------------------------------------------
 -- api_keys — optional, for raised rate limits
 -- ---------------------------------------------------------------------------

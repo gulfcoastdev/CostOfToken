@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import type { NormalizedModel } from '@/lib/types.ts'
+import { type Anomaly, detectAnomalies, hasBlocking } from './anomaly.ts'
 import { enrichModels } from './enrich.ts'
 import { getExtractors } from './extractors/index.ts'
 import { resetOpenRouterCache } from './extractors/openrouter.ts'
@@ -9,13 +10,14 @@ import { validateModel } from './normalize.ts'
 import {
   deactivateMissingModels,
   ensureProviders,
+  getProviderBaseline,
   logExtractionRun,
   upsertProviderModels,
 } from './upsert.ts'
 
 export interface ProviderResult {
   provider: string
-  status: 'ok' | 'partial' | 'failed' | 'skipped'
+  status: 'ok' | 'partial' | 'failed' | 'skipped' | 'blocked'
   sourceKind: string
   modelsFound: number
   modelsRejected: number
@@ -23,6 +25,7 @@ export interface ProviderResult {
   durationMs: number
   error?: string
   rejections?: string[]
+  anomalies?: Anomaly[]
 }
 
 export interface RunSummary {
@@ -35,6 +38,8 @@ export interface RunSummary {
   totalModels: number
   totalChanged: number
   ok: boolean
+  /** Providers whose results were rejected by anomaly detection. */
+  blocked: number
 }
 
 export interface RunOptions {
@@ -44,6 +49,11 @@ export interface RunOptions {
   dryRun?: boolean
   /** Injected for tests. */
   ctx?: ExtractorContext
+  /**
+   * Write even when anomaly detection blocks. For when a flagged change is
+   * genuinely real — a vendor really did halve its prices.
+   */
+  force?: boolean
 }
 
 const defaultContext: ExtractorContext = {
@@ -60,7 +70,7 @@ const defaultContext: ExtractorContext = {
  * provider writes no rows at all.
  */
 export async function runPipeline(options: RunOptions = {}): Promise<RunSummary> {
-  const { only, dryRun = false, ctx = defaultContext } = options
+  const { only, dryRun = false, ctx = defaultContext, force = false } = options
 
   const runId = randomUUID()
   const startedAt = new Date()
@@ -115,15 +125,34 @@ export async function runPipeline(options: RunOptions = {}): Promise<RunSummary>
         const providerId = providerIds.get(extractor.providerSlug)
         if (!providerId) throw new Error(`provider ${extractor.providerSlug} is not registered`)
 
-        const { pricesChanged } = await upsertProviderModels(providerId, valid)
-        base.modelsChanged = pricesChanged
-        await deactivateMissingModels(
-          providerId,
-          valid.map((m) => m.modelId),
-        )
-      }
+        // Compare against what's already stored before overwriting it. This is
+        // the only place a silent scraper failure is detectable: each
+        // individual price looks plausible, and only the shape of the change
+        // across the whole provider gives it away.
+        const baseline = await getProviderBaseline(providerId)
+        const anomalies = detectAnomalies(baseline, valid)
+        if (anomalies.length > 0) base.anomalies = anomalies
 
-      base.status = rejections.length > 0 ? 'partial' : 'ok'
+        if (hasBlocking(anomalies) && !force) {
+          // Keep the last known-good prices rather than publishing a result we
+          // have concrete reason to distrust. Re-run with force to override.
+          base.status = 'blocked'
+          base.error = anomalies
+            .filter((a) => a.severity === 'block')
+            .map((a) => a.message)
+            .join(' ')
+        } else {
+          const { pricesChanged } = await upsertProviderModels(providerId, valid)
+          base.modelsChanged = pricesChanged
+          await deactivateMissingModels(
+            providerId,
+            valid.map((m) => m.modelId),
+          )
+          base.status = rejections.length > 0 ? 'partial' : 'ok'
+        }
+      } else {
+        base.status = rejections.length > 0 ? 'partial' : 'ok'
+      }
     } catch (error) {
       base.status = 'failed'
       base.error = error instanceof Error ? error.message : String(error)
@@ -143,6 +172,7 @@ export async function runPipeline(options: RunOptions = {}): Promise<RunSummary>
           modelsChanged: base.modelsChanged,
           durationMs: base.durationMs,
           error: base.error ?? null,
+          anomalies: base.anomalies,
         })
       } catch {
         // Never let logging failure mask a successful extraction.
@@ -162,5 +192,6 @@ export async function runPipeline(options: RunOptions = {}): Promise<RunSummary>
     totalModels: results.reduce((sum, r) => sum + r.modelsFound, 0),
     totalChanged: results.reduce((sum, r) => sum + r.modelsChanged, 0),
     ok: results.some((r) => r.status === 'ok' || r.status === 'partial'),
+    blocked: results.filter((r) => r.status === 'blocked').length,
   }
 }

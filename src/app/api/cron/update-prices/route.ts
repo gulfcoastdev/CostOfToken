@@ -15,7 +15,10 @@ export const maxDuration = 300
  * Triggered daily by Vercel Cron, which sends `Authorization: Bearer $CRON_SECRET`.
  * Returns 200 with a per-provider report whenever at least one provider
  * succeeded — a single broken vendor page must not turn the whole job red.
- * Returns 502 only if every provider failed, which is the signal worth paging on.
+ * Returns 502 if every provider failed, and 409 if any provider's result was
+ * blocked by anomaly detection. Both are worth alerting on: 409 means the
+ * scrape ran but produced something we have concrete reason to distrust, so
+ * the previous prices were kept.
  */
 async function handle(request: Request): Promise<NextResponse> {
   if (!isAuthorized(request)) {
@@ -36,6 +39,8 @@ async function handle(request: Request): Promise<NextResponse> {
     const summary = await runPipeline({
       only: only.length > 0 ? only : undefined,
       dryRun: params.get('dry_run') === 'true',
+      // Opt-in override for when a flagged change is genuinely real.
+      force: params.get('force') === 'true',
     })
 
     if (!summary.dryRun) {
@@ -43,8 +48,13 @@ async function handle(request: Request): Promise<NextResponse> {
       await pruneRateLimitWindows().catch(() => {})
     }
 
+    // A blocked provider is a real alert: extraction worked, but the result
+    // was rejected as untrustworthy and nothing was written. Surface it as a
+    // failure status so monitoring notices, rather than burying it in the body.
+    const status = !summary.ok ? 502 : summary.blocked > 0 ? 409 : 200
+
     return NextResponse.json(summary, {
-      status: summary.ok ? 200 : 502,
+      status,
       headers: { 'cache-control': 'no-store' },
     })
   } catch (error) {

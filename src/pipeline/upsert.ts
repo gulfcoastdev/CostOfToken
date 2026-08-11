@@ -1,5 +1,6 @@
 import { sql } from '@/lib/db.ts'
 import type { NormalizedModel } from '@/lib/types.ts'
+import type { Anomaly, BaselineModel } from './anomaly.ts'
 import { PROVIDERS } from './providers.ts'
 
 /**
@@ -30,6 +31,23 @@ export async function ensureProviders(): Promise<Map<string, string>> {
     returning id, slug
   `
   return new Map(rows.map((r) => [r.slug, r.id]))
+}
+
+/**
+ * The provider's currently-stored prices, used as the baseline for anomaly
+ * detection. Read before the upsert, since the upsert destroys it.
+ */
+export async function getProviderBaseline(providerId: string): Promise<BaselineModel[]> {
+  return await sql<BaselineModel[]>`
+    select m.model_id      as "modelId",
+           pr.input_price        as "inputPrice",
+           pr.cached_input_price as "cachedInputPrice",
+           pr.output_price       as "outputPrice"
+      from models m
+      join prices pr on pr.model_id = m.id
+     where m.provider_id = ${providerId}
+       and m.is_active
+  `
 }
 
 export interface UpsertResult {
@@ -156,21 +174,24 @@ export async function upsertProviderModels(
 export interface RunLogEntry {
   runId: string
   providerSlug: string
-  status: 'ok' | 'partial' | 'failed' | 'skipped'
+  status: 'ok' | 'partial' | 'failed' | 'skipped' | 'blocked'
   sourceKind: string | null
   modelsFound: number
   modelsChanged: number
   durationMs: number
   error?: string | null
+  anomalies?: Anomaly[]
 }
 
 export async function logExtractionRun(entry: RunLogEntry): Promise<void> {
   await sql`
     insert into extraction_runs
-      (run_id, provider_slug, status, source_kind, models_found, models_changed, duration_ms, error)
+      (run_id, provider_slug, status, source_kind, models_found, models_changed,
+       duration_ms, error, anomalies)
     values (
       ${entry.runId}, ${entry.providerSlug}, ${entry.status}, ${entry.sourceKind},
-      ${entry.modelsFound}, ${entry.modelsChanged}, ${entry.durationMs}, ${entry.error ?? null}
+      ${entry.modelsFound}, ${entry.modelsChanged}, ${entry.durationMs}, ${entry.error ?? null},
+      ${entry.anomalies?.length ? sql.json(entry.anomalies as never) : null}
     )
   `
 }

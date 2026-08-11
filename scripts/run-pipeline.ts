@@ -11,6 +11,7 @@ loadEnv()
 
 const args = process.argv.slice(2)
 const dryRun = args.includes('--dry-run')
+const force = args.includes('--force')
 const onlyArg = args.find((a) => a.startsWith('--only='))
 const only = onlyArg
   ? onlyArg
@@ -27,7 +28,7 @@ if (!dryRun && !process.env.DATABASE_URL) {
 
 const { runPipeline } = await import('../src/pipeline/run.ts')
 
-const summary = await runPipeline({ dryRun, only })
+const summary = await runPipeline({ dryRun, only, force })
 
 const pad = (value: string | number, width: number) => String(value).padEnd(width)
 console.log(
@@ -42,6 +43,9 @@ for (const p of summary.providers) {
     )} ${p.durationMs}ms`,
   )
   if (p.error) console.log(`  error: ${p.error}`)
+  for (const anomaly of p.anomalies ?? []) {
+    console.log(`  ${anomaly.severity === 'block' ? 'BLOCK' : 'warn '} ${anomaly.code}: ${anomaly.message}`)
+  }
   if (p.rejections?.length) {
     for (const rejection of p.rejections) console.log(`  rejected: ${rejection}`)
   }
@@ -53,6 +57,13 @@ console.log(
   }\n`,
 )
 
+if (summary.blocked > 0) {
+  console.error(
+    `${summary.blocked} provider(s) blocked by anomaly detection — previous prices kept.\n` +
+      'Review the findings above. If the change is genuine, re-run with --force.',
+  )
+  process.exit(2)
+}
 if (!summary.ok) {
   console.error('All providers failed.')
   process.exit(1)

@@ -104,6 +104,46 @@ against another's standard price would make the whole table wrong, so
 non-standard tiers are skipped. Tracking them as separate, labelled tiers is a
 natural next step.
 
+### Anomaly detection
+
+Per-row validation catches implausible values, but the failures this project
+actually hit produced entirely plausible rows and reported `ok`:
+
+- OpenAI's HTML exposed 13 of 73 models, because the rest lived in unselected
+  tabs. A "successful" run silently dropped 80% of a provider.
+- Every OpenAI price was the Priority tier — exactly 2x standard — because four
+  tier tables shared a heading and the last one won.
+
+Neither is visible from a status code, an exception, or any single row. They
+are only detectable by comparing a run against what the provider looked like
+yesterday, which is what [`src/pipeline/anomaly.ts`](src/pipeline/anomaly.ts)
+does before anything is written:
+
+| Check | Fires when | Severity |
+| --- | --- | --- |
+| `coverage_drop` | model count falls below 60% of baseline (85% warns) | block |
+| `uniform_price_shift` | ≥80% of changed prices move by the *same* exact factor | block |
+| `field_collapse` | a column populated for >50% of models becomes <10% | block |
+| `mass_price_change` | over half the models change price, by varying amounts | warn |
+
+A blocking anomaly means **nothing is written** — the provider keeps its last
+known-good prices, matching the rule that a failure never replaces good data.
+The cron route returns `409`, the CLI exits `2`, and the finding is stored in
+`extraction_runs.anomalies`.
+
+The uniformity test is what separates a parsing fault from real news. A vendor
+repricing moves models by differing amounts; a scraper that latched onto the
+wrong tier moves *every* model by exactly 0.5x or 2x. Genuinely varied changes
+warn but still write.
+
+When a flagged change is real, re-run with `--force` (CLI) or `?force=true`
+(cron). The anomaly is still recorded, so the override leaves a trail.
+
+```
+openai       blocked   scrape   73      0        596ms
+  BLOCK coverage_drop: Model count fell 62% (193 → 73). The source layout probably changed.
+```
+
 ### Data-quality guards
 
 The pipeline's failure mode is quietly publishing wrong numbers, so:
@@ -115,7 +155,7 @@ The pipeline's failure mode is quietly publishing wrong numbers, so:
   context window read as a price).
 - **Empty means broken.** An extractor returning zero models is treated as a
   failure, not an empty catalogue — a silent layout change looks identical
-  otherwise.
+  otherwise. Partial collapse is caught by anomaly detection, above.
 - **Failures write nothing.** A provider that errors keeps its last known
   prices. Yesterday's price beats a gap or a row of nulls.
 - **Zero ≠ null.** A free tier is a real price of `0`; an unavailable tier is
@@ -259,6 +299,10 @@ normalization, enrichment, upsert with history, all API endpoints, rate
 limiting, cron auth, per-provider soft-fail, and the comparison UI.
 
 **Known gaps:**
+- Anomaly detection compares against the *previous stored state*, so it catches
+  regressions but cannot detect a scraper that has been wrong since day one.
+- No alerting is wired up. A blocked run surfaces as a `409` and a row in
+  `extraction_runs`; something still has to watch for it.
 - ByteDance and Baidu resolve to 1 model each — OpenRouter barely carries them.
   Both need first-party extractors, likely browser-driven.
 - Context windows are `null` where the metadata catalogue has no exact match
