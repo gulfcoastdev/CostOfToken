@@ -1,4 +1,5 @@
 import { timingSafeEqual } from 'node:crypto'
+import { revalidatePath } from 'next/cache'
 import { NextResponse } from 'next/server'
 import { env } from '@/lib/env.ts'
 import { pruneRateLimitWindows } from '@/lib/rate-limit.ts'
@@ -54,6 +55,24 @@ async function handle(request: Request): Promise<NextResponse> {
     if (!summary.dryRun) {
       // Housekeeping is best-effort and must not fail the run.
       await pruneRateLimitWindows().catch(() => {})
+
+      // Drop the cached pages so a price change is visible immediately.
+      // Without this, pages keep serving the previous day's numbers until
+      // their revalidate window elapses — up to an hour on model pages, which
+      // is a long time for a site whose entire claim is up-to-date pricing.
+      // The route-pattern form invalidates every instance of a dynamic route.
+      if (summary.totalChanged > 0) {
+        try {
+          revalidatePath('/', 'page')
+          revalidatePath('/providers/[slug]', 'page')
+          revalidatePath('/models/[provider]/[model]', 'page')
+          revalidatePath('/llms-full.txt')
+          revalidatePath('/sitemap.xml')
+        } catch (error) {
+          // Never fail a good run because cache invalidation misbehaved.
+          console.error('revalidate after price update failed', error)
+        }
+      }
     }
 
     // A blocked provider is a real alert: extraction worked, but the result
