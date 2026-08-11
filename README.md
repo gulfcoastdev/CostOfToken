@@ -6,8 +6,8 @@ schema, with a public JSON API.
 **Stack:** Next.js (App Router) · Vercel · Supabase Postgres
 
 Everything below is implemented and verified end to end against a real
-Postgres. The designed UI is deliberately still a placeholder — see
-[Status](#status).
+Postgres — pipeline, API, and the comparison UI. See [Status](#status) for
+what is not yet production-ready.
 
 ---
 
