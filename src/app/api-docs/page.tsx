@@ -56,10 +56,9 @@ export default async function ApiDocsPage() {
   let modelCount = 0
   let updatedAt: string | null = null
   try {
-    const [page, lastUpdated] = await Promise.all([
-      getPrices({ limit: 1, offset: 0, sort: 'input', direction: 'asc' }),
-      getLastUpdated(),
-    ])
+    // Sequential: concurrent reads sharing one database connection deadlock.
+    const page = await getPrices({ limit: 1, offset: 0, sort: 'input', direction: 'asc' })
+    const lastUpdated = await getLastUpdated()
     modelCount = page.total
     updatedAt = lastUpdated
   } catch {

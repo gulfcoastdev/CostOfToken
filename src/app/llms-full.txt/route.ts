@@ -26,10 +26,9 @@ export async function GET(): Promise<Response> {
   let updatedAt: string | null = null
 
   try {
-    const [page, lastUpdated] = await Promise.all([
-      getPrices({ limit: 1000, offset: 0, sort: 'provider', direction: 'asc' }),
-      getLastUpdated(),
-    ])
+    // Sequential: concurrent reads sharing one database connection deadlock.
+    const page = await getPrices({ limit: 1000, offset: 0, sort: 'provider', direction: 'asc' })
+    const lastUpdated = await getLastUpdated()
     rows = page.rows
     updatedAt = lastUpdated
   } catch {

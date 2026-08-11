@@ -41,10 +41,11 @@ function money(value: number | null): string {
 async function load(slug: string) {
   const pair = findComparison(slug)
   if (!pair) return null
-  const [a, b] = await Promise.all([
-    getModelForProvider(pair.a.provider, pair.a.model),
-    getModelForProvider(pair.b.provider, pair.b.model),
-  ])
+  // Sequential, not Promise.all. Concurrent reads sharing one database
+  // connection deadlock under production concurrency — the same fault that
+  // hung the home page. Two reads in series cost a few hundred milliseconds.
+  const a = await getModelForProvider(pair.a.provider, pair.a.model)
+  const b = await getModelForProvider(pair.b.provider, pair.b.model)
   if (!a || !b) return null
   return { pair, a, b }
 }

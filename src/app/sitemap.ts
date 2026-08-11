@@ -22,11 +22,10 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const now = new Date()
 
   try {
-    const [models, providers, lastUpdated] = await Promise.all([
-      getAllModelRefs(),
-      getProviders(),
-      getLastUpdated(),
-    ])
+    // Sequential: concurrent reads sharing one database connection deadlock.
+    const models = await getAllModelRefs()
+    const providers = await getProviders()
+    const lastUpdated = await getLastUpdated()
 
     const homeModified = lastUpdated ? new Date(lastUpdated) : now
 

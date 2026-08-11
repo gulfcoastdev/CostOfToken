@@ -98,10 +98,9 @@ export default async function ModelPage({
   const brand = getBrand(row.provider)
   const brandName = brand?.brand ?? row.provider_name
 
-  const [siblings, history] = await Promise.all([
-    getProviderModels(row.provider).catch((): PriceRowV1[] => []),
-    getHistory(row.model_id, 12).catch((): HistoryPointV1[] => []),
-  ])
+  // Sequential: concurrent reads sharing one database connection deadlock.
+  const siblings = await getProviderModels(row.provider).catch((): PriceRowV1[] => [])
+  const history = await getHistory(row.model_id, 12).catch((): HistoryPointV1[] => [])
 
   const cheaper = siblings.filter(
     (s) => s.model_id !== row.model_id && s.input !== null && row.input !== null && s.input < row.input,

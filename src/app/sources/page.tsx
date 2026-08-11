@@ -50,7 +50,9 @@ export default async function SourcesPage() {
   let counts = new Map<string, number>()
   let updatedAt: string | null = null
   try {
-    const [providers, lastUpdated] = await Promise.all([getProviders(), getLastUpdated()])
+    // Sequential: concurrent reads sharing one database connection deadlock.
+    const providers = await getProviders()
+    const lastUpdated = await getLastUpdated()
     counts = new Map(providers.map((p) => [p.slug, p.model_count]))
     updatedAt = lastUpdated
   } catch {

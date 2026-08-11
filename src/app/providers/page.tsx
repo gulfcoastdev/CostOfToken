@@ -44,10 +44,9 @@ export default async function ProvidersIndexPage() {
   let updatedAt: string | null = null
 
   try {
-    const [page, lastUpdated] = await Promise.all([
-      getPrices({ limit: 1000, offset: 0, sort: 'input', direction: 'asc' }),
-      getLastUpdated(),
-    ])
+    // Sequential: concurrent reads sharing one database connection deadlock.
+    const page = await getPrices({ limit: 1000, offset: 0, sort: 'input', direction: 'asc' })
+    const lastUpdated = await getLastUpdated()
     updatedAt = lastUpdated
 
     const byProvider = new Map<string, PriceRowV1[]>()

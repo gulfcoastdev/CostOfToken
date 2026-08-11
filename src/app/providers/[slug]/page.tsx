@@ -108,10 +108,9 @@ export default async function ProviderPage({ params }: { params: Promise<{ slug:
   let models: PriceRowV1[] = []
   let updatedAt: string | null = null
   try {
-    ;[models, updatedAt] = await Promise.all([
-      getProviderModels(resolved.canonical),
-      getLastUpdated(),
-    ])
+    // Sequential: concurrent reads sharing one database connection deadlock.
+    models = await getProviderModels(resolved.canonical)
+    updatedAt = await getLastUpdated()
   } catch {
     models = []
   }
