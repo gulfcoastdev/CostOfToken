@@ -4,7 +4,18 @@ import { Breadcrumbs, JsonLd, PageShell, SiteFooter } from '@/components/site-ch
 import { getLastUpdated, getPrices } from '@/lib/queries.ts'
 import { absoluteUrl, breadcrumbSchema, faqSchema, SITE } from '@/lib/seo.ts'
 
-export const revalidate = 3600
+/**
+ * Rendered per request, not prerendered.
+ *
+ * Production builds were failing because this page reads pricing, and the
+ * build environment cannot reach the database — every data-backed page hung
+ * for 60 seconds and the export aborted, while the same queries answer in
+ * under a second at runtime. Until that is understood (see scripts/db-probe.ts,
+ * which reports connectivity in the build log), the build must not depend on
+ * the database at all: a deploy that cannot ship is worse than a page that
+ * renders on demand.
+ */
+export const dynamic = 'force-dynamic'
 
 const TITLE = 'Free LLM Pricing API — JSON, No Signup'
 const DESCRIPTION =

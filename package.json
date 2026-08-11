@@ -13,7 +13,9 @@
     "pipeline:run": "tsx scripts/run-pipeline.ts",
     "pipeline:dry": "tsx scripts/run-pipeline.ts --dry-run",
     "test": "tsx --test tests/*.test.ts",
-    "db:status": "tsx scripts/db-status.ts"
+    "db:status": "tsx scripts/db-status.ts",
+    "db:probe": "tsx scripts/db-probe.ts",
+    "prebuild": "tsx scripts/db-probe.ts || true"
   },
   "dependencies": {
     "cheerio": "^1.0.0",

@@ -64,7 +64,18 @@ const HOME_FAQS = [
  * seed client state, so the client reads them from the URL itself and this
  * page stays cached.
  */
-export const revalidate = 300
+/**
+ * Rendered per request, not prerendered.
+ *
+ * Production builds were failing because this page reads pricing, and the
+ * build environment cannot reach the database — every data-backed page hung
+ * for 60 seconds and the export aborted, while the same queries answer in
+ * under a second at runtime. Until that is understood (see scripts/db-probe.ts,
+ * which reports connectivity in the build log), the build must not depend on
+ * the database at all: a deploy that cannot ship is worse than a page that
+ * renders on demand.
+ */
+export const dynamic = 'force-dynamic'
 
 export default async function HomePage() {
   let rows: ExplorerRow[] = []
