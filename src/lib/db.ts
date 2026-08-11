@@ -17,16 +17,23 @@ declare global {
 function createClient(): postgres.Sql {
   return postgres(env.databaseUrl, {
     prepare: false,
-    // Deliberately small. Next spawns one build worker per CPU and each gets
-    // its own pool, so a generous per-process limit multiplies into far more
-    // connections than Supabase's pooler allows — which starves the build and
-    // makes individual pages hang rather than fail loudly.
-    max: 3,
-    idle_timeout: 20,
-    // Short on purpose. A hung connection during `next build` is fatal — the
-    // page export gives up after 60s and the whole deploy fails — whereas a
-    // fast failure lets the page render its fallback and be corrected by the
-    // next revalidation.
+    /**
+     * One connection per process.
+     *
+     * This is the fix for a failure that looked like several different bugs: a
+     * build where every data-backed page hung past 60 seconds, and a runtime
+     * where each successive request to a database-reading page took longer
+     * than the last until it timed out — 1.4s, then 7s, then 16s, then nothing.
+     *
+     * Both are the same thing. Supabase's pooler allows a limited number of
+     * connections; a serverless instance handles one request at a time, so any
+     * pool larger than one just multiplies that instance's claim on the
+     * allowance by the number of instances. Once the allowance is gone, new
+     * connections wait rather than fail, which reads as a hang.
+     */
+    max: 1,
+    // Release the slot back to the pooler promptly between invocations.
+    idle_timeout: 10,
     connect_timeout: 8,
     // numeric(12,6) arrives as a string by default to avoid float precision
     // loss. Prices are small enough that a JS number is exact here, and the
