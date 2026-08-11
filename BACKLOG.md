@@ -31,7 +31,7 @@ Working roadmap. Ordered by priority, not by effort.
       Each page needs something the table does not already say — cost at a
       realistic workload, context and modality differences, when to pick each.
 
-- [ ] **Clear API examples (JS, Python, curl) on the API docs page**
+- [x] **Clear API examples (JS, Python, curl) on the API docs page** — done.
       *Notes:* curl example is already there; JS and Python are missing. Worth
       showing the `meta.attribution` field in the response so integrators see
       the backlink requirement in the example itself.

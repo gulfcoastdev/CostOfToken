@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
+import { CodeBlock } from '@/components/code-block.tsx'
 import { Breadcrumbs, JsonLd, PageShell, SiteFooter } from '@/components/site-chrome.tsx'
 import { getLastUpdated, getPrices } from '@/lib/queries.ts'
 import { absoluteUrl, breadcrumbSchema, faqSchema, SITE } from '@/lib/seo.ts'
@@ -140,10 +141,105 @@ export default async function ApiDocsPage() {
       </section>
 
       <section className="mb-8">
-        <h2 className="mb-3 text-xl font-semibold tracking-tight text-neutral-950">Try it</h2>
-        <pre className="overflow-x-auto rounded-xl border border-neutral-200 bg-neutral-900 p-4 text-[13px] leading-relaxed text-neutral-100">
-          <code>{`curl '${SITE.url}/api/v1/prices?provider=anthropic&sort=input'`}</code>
-        </pre>
+        <h2 className="mb-3 text-xl font-semibold tracking-tight text-neutral-950">Examples</h2>
+        <p className="mb-4 max-w-3xl text-[15px] leading-relaxed text-neutral-700">
+          Every example fetches Anthropic&apos;s models sorted by input price, and reads the
+          attribution back out of the response — the credit is required wherever you display the
+          data, and it travels in the payload so you do not have to hardcode it.
+        </p>
+
+        <div className="space-y-5">
+          <CodeBlock
+            label="curl"
+            code={`curl '${SITE.url}/api/v1/prices?provider=anthropic&sort=input'`}
+          />
+
+          <CodeBlock
+            label="JavaScript / TypeScript"
+            code={`const url = new URL('${SITE.url}/api/v1/prices')
+url.searchParams.set('provider', 'anthropic')
+url.searchParams.set('sort', 'input')
+
+const response = await fetch(url)
+if (!response.ok) {
+  // 429 means the hourly quota is spent; Retry-After says how long to wait.
+  throw new Error(\`CostOfToken API returned \${response.status}\`)
+}
+
+const { meta, data } = await response.json()
+
+// Required wherever you show these prices. Ready-made HTML is in the payload.
+console.log(meta.attribution.html)
+
+for (const model of data) {
+  console.log(\`\${model.display_name}: $\${model.input}/1M in, $\${model.output}/1M out\`)
+}`}
+          />
+
+          <CodeBlock
+            label="Python"
+            code={`import requests
+
+response = requests.get(
+    "${SITE.url}/api/v1/prices",
+    params={"provider": "anthropic", "sort": "input"},
+    timeout=10,
+)
+response.raise_for_status()
+payload = response.json()
+
+# Required wherever you show these prices.
+print(payload["meta"]["attribution"]["html"])
+
+for model in payload["data"]:
+    print(f'{model["display_name"]}: \${model["input"]}/1M in, \${model["output"]}/1M out')`}
+          />
+        </div>
+      </section>
+
+      <section className="mb-8">
+        <h2 className="mb-3 text-xl font-semibold tracking-tight text-neutral-950">
+          Estimating what a workload costs
+        </h2>
+        <p className="mb-4 max-w-3xl text-[15px] leading-relaxed text-neutral-700">
+          The most common reason to call this API is to price a workload rather than to list
+          prices. Output usually costs several times input, so the cheapest model depends on the
+          shape of your requests — this is the same calculation the{' '}
+          <Link href="/calculator" className="text-emerald-700 underline underline-offset-2">
+            calculator
+          </Link>{' '}
+          runs.
+        </p>
+        <CodeBlock
+          label="Python — rank models for your own traffic"
+          code={`import requests
+
+INPUT_TOKENS = 20_000     # prompt, including any retrieved context
+OUTPUT_TOKENS = 500       # what the model generates back
+REQUESTS_PER_MONTH = 30_000
+CACHED_SHARE = 0.6        # portion of the prompt that repeats between calls
+
+models = requests.get("${SITE.url}/api/v1/prices", timeout=10).json()["data"]
+
+def monthly_cost(model):
+    # A model that publishes no output price cannot generate text — skip it
+    # rather than treating the missing price as free.
+    if model["output"] is None or model["input"] is None:
+        return None
+    cached_price = model["cached_input"] if model["cached_input"] is not None else model["input"]
+    cached = INPUT_TOKENS * CACHED_SHARE
+    fresh = INPUT_TOKENS - cached
+    per_request = (
+        fresh * model["input"] + cached * cached_price + OUTPUT_TOKENS * model["output"]
+    ) / 1_000_000
+    return per_request * REQUESTS_PER_MONTH
+
+priced = [(monthly_cost(m), m) for m in models]
+priced = [(cost, m) for cost, m in priced if cost is not None and cost > 0]
+
+for cost, model in sorted(priced)[:5]:
+    print(f'\${cost:>10,.2f}  {model["display_name"]} ({model["provider_name"]})')`}
+        />
       </section>
 
       <section className="mb-8">
