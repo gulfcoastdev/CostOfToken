@@ -1,3 +1,4 @@
+import { unstable_cache } from 'next/cache'
 import { sql } from './db.ts'
 import type { HistoryPointV1, PriceRowV1, SourceKind } from './types.ts'
 
@@ -67,7 +68,13 @@ export interface PricesPage {
   lastUpdated: string | null
 }
 
-export async function getPrices(filters: PriceFilters): Promise<PricesPage> {
+/** Cached for the same reason as getProviderModels. */
+export const getPrices = unstable_cache(getPricesUncached, ['prices'], {
+  revalidate: 300,
+  tags: ['prices'],
+})
+
+async function getPricesUncached(filters: PriceFilters): Promise<PricesPage> {
   const sortColumn = SORT_COLUMNS[filters.sort ?? 'input']
   const direction = filters.direction === 'desc' ? sql`desc` : sql`asc`
 
@@ -183,7 +190,15 @@ export interface PriceTrend {
  * which honestly reflects "we weren't tracking it yet" rather than inventing
  * a change.
  */
-export async function getPriceTrends(days = 90, points = 6): Promise<Map<string, PriceTrend>> {
+export const getPriceTrends = unstable_cache(getPriceTrendsUncached, ['price-trends'], {
+  revalidate: 300,
+  tags: ['prices'],
+})
+
+async function getPriceTrendsUncached(
+  days = 90,
+  points = 6,
+): Promise<Map<string, PriceTrend>> {
   const rows = await sql<
     Array<{ model_id: string; input_price: number | null; recorded_at: Date }>
   >`
@@ -276,7 +291,26 @@ export async function getModelForProvider(
 }
 
 /** Cheapest and most expensive comparable models, for contextual copy on detail pages. */
-export async function getProviderModels(provider: string): Promise<PriceRowV1[]> {
+/**
+ * Cached across requests.
+ *
+ * Every model page renders its provider's full model list to show siblings and
+ * find a cheaper alternative. With Next prefetching links, opening one provider
+ * page fires renders for all of its models at once — 73 for OpenAI — and each
+ * was independently querying every row of that provider. A crawler walking the
+ * sitemap does the same thing, and the database work starved every other page
+ * on the site until it timed out.
+ *
+ * The data changes once a day, so serving a burst of renders from one cached
+ * result costs nothing in freshness.
+ */
+export const getProviderModels = unstable_cache(
+  getProviderModelsUncached,
+  ['provider-models'],
+  { revalidate: 300, tags: ['prices'] },
+)
+
+async function getProviderModelsUncached(provider: string): Promise<PriceRowV1[]> {
   const records = await sql<PriceRecord[]>`
     select *, count(*) over () as total_count
       from v_current_prices
@@ -288,14 +322,24 @@ export async function getProviderModels(provider: string): Promise<PriceRowV1[]>
   return records.map(toPriceRow)
 }
 
-export async function getLastUpdated(): Promise<string | null> {
+export const getLastUpdated = unstable_cache(getLastUpdatedUncached, ['last-updated'], {
+  revalidate: 300,
+  tags: ['prices'],
+})
+
+async function getLastUpdatedUncached(): Promise<string | null> {
   const [row] = await sql<Array<{ updated_at: Date | null }>>`
     select max(updated_at) as updated_at from prices
   `
   return row?.updated_at ? row.updated_at.toISOString() : null
 }
 
-export async function getProviders(): Promise<
+export const getProviders = unstable_cache(getProvidersUncached, ['providers'], {
+  revalidate: 300,
+  tags: ['prices'],
+})
+
+async function getProvidersUncached(): Promise<
   Array<{ slug: string; name: string; pricing_url: string | null; model_count: number }>
 > {
   const rows = await sql<

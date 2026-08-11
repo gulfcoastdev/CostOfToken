@@ -1,5 +1,5 @@
 import { timingSafeEqual } from 'node:crypto'
-import { revalidatePath } from 'next/cache'
+import { revalidatePath, revalidateTag } from 'next/cache'
 import { NextResponse } from 'next/server'
 import { env } from '@/lib/env.ts'
 import { pruneRateLimitWindows } from '@/lib/rate-limit.ts'
@@ -63,6 +63,9 @@ async function handle(request: Request): Promise<NextResponse> {
       // The route-pattern form invalidates every instance of a dynamic route.
       if (summary.totalChanged > 0) {
         try {
+          // Drop cached query results first, or revalidated pages would
+          // rebuild from the same stale data.
+          revalidateTag('prices')
           revalidatePath('/', 'page')
           revalidatePath('/providers/[slug]', 'page')
           revalidatePath('/models/[provider]/[model]', 'page')
