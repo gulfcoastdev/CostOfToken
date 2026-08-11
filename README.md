@@ -303,7 +303,10 @@ npm run pipeline:dry -- --only=xai      # one provider
 npx tsx scripts/inspect.ts anthropic    # dump parsed rows to eyeball
 ```
 
-`maxDuration` is 300s, which requires a Vercel plan above Hobby (60s ceiling).
+`maxDuration` is 60s, which is the Hobby ceiling, so it deploys anywhere. A
+full run takes about 4 seconds; raise it on a paid plan only if you add many
+more providers. Timing out is survivable: providers are written one at a time,
+so a truncated run leaves the rest on their last known-good prices.
 
 ---
 

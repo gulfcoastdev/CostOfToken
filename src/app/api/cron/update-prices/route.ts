@@ -6,8 +6,16 @@ import { runPipeline } from '@/pipeline/run.ts'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
-/** Ten providers fetched sequentially; needs more than the 60s Hobby ceiling. */
-export const maxDuration = 300
+/**
+ * Ten providers fetched sequentially complete in about 4 seconds, so 60 is
+ * generous — and 60 is the ceiling on Vercel's Hobby plan, so this deploys
+ * anywhere. Raise it if you add many more providers; paid plans allow more.
+ *
+ * Running out of time is survivable by design: providers are written one at a
+ * time, so a truncated run leaves the ones already processed updated and the
+ * rest on their last known-good prices until tomorrow.
+ */
+export const maxDuration = 60
 
 /**
  * POST|GET /api/cron/update-prices
