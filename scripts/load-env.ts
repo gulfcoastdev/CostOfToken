@@ -14,3 +14,23 @@ export function loadEnv(): void {
     }
   }
 }
+
+/**
+ * Human-readable target for a connection string, with credentials stripped.
+ *
+ * Printed before any write so it is obvious which database is about to be
+ * touched. `.env.local` normally points at a local container while production
+ * lives in Vercel, but a one-off inline override is exactly the situation
+ * where someone seeds the wrong database without noticing.
+ */
+export function describeDatabase(url: string): string {
+  try {
+    const parsed = new URL(url)
+    const database = parsed.pathname.replace(/^\//, '') || 'postgres'
+    const isLocal = /^(localhost|127\.0\.0\.1|\[::1\])$/.test(parsed.hostname)
+    const label = isLocal ? 'LOCAL' : 'REMOTE'
+    return `${label}  ${parsed.hostname}:${parsed.port || '5432'}/${database}`
+  } catch {
+    return 'unparseable connection string'
+  }
+}

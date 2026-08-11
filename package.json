@@ -12,7 +12,8 @@
     "db:push": "tsx scripts/db-push.ts",
     "pipeline:run": "tsx scripts/run-pipeline.ts",
     "pipeline:dry": "tsx scripts/run-pipeline.ts --dry-run",
-    "test": "tsx --test tests/*.test.ts"
+    "test": "tsx --test tests/*.test.ts",
+    "db:status": "tsx scripts/db-status.ts"
   },
   "dependencies": {
     "cheerio": "^1.0.0",

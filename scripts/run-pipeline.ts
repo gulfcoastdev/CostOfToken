@@ -5,7 +5,7 @@
  *   npm run pipeline:run                  # extract and persist
  *   npm run pipeline:dry -- --only=xai,openai
  */
-import { loadEnv } from './load-env.ts'
+import { describeDatabase, loadEnv } from './load-env.ts'
 
 loadEnv()
 
@@ -29,6 +29,10 @@ const hasDatabase =
 if (!dryRun && !hasDatabase) {
   console.error('No database URL set. Use --dry-run to extract without writing.')
   process.exit(1)
+}
+
+if (!dryRun && hasDatabase) {
+  console.log(`Writing to: ${describeDatabase(hasDatabase)}`)
 }
 
 const { runPipeline } = await import('../src/pipeline/run.ts')

@@ -7,7 +7,7 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import postgres from 'postgres'
-import { loadEnv } from './load-env.ts'
+import { describeDatabase, loadEnv } from './load-env.ts'
 
 loadEnv()
 
@@ -22,6 +22,8 @@ if (!url) {
   console.error('No database URL set. Copy .env.example to .env.local and fill in DATABASE_URL.')
   process.exit(1)
 }
+
+console.log(`Applying schema to: ${describeDatabase(url)}`)
 
 const schemaPath = resolve(process.cwd(), 'db/schema.sql')
 const schema = readFileSync(schemaPath, 'utf8')
