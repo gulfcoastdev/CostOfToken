@@ -18,8 +18,20 @@ import type { PriceRowV1 } from '@/lib/types.ts'
 
 export const revalidate = 3600
 
+/**
+ * Rendered on first request, not at build time.
+ *
+ * Prerendering these made the build depend on reaching the database, which is
+ * the wrong dependency for a deploy: Vercel marks environment variables
+ * "Sensitive" by default and those are not exposed during the build, so a
+ * perfectly configured project still fails to compile pages that need data.
+ *
+ * With `revalidate` set, the first request renders and caches each page and
+ * everything after is served from cache, so the pages are still static in
+ * practice — but a deploy can never be blocked by database reachability.
+ */
 export async function generateStaticParams() {
-  return Object.keys(PROVIDER_BRANDS).map((slug) => ({ slug }))
+  return []
 }
 
 /** Resolve an alias to its canonical slug, or null if the segment is unknown. */
