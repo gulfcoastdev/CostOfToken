@@ -1,9 +1,12 @@
 import type { NormalizedModel } from '@/lib/types.ts'
 import { inferModality, inferTags, parsePricePerMillion } from '../normalize.ts'
-import { cell, findColumn, findColumnExcluding, isNonStandardTier, parseTables } from './html-table.ts'
+import { cell, findColumn, findColumnExcluding, isNonStandardTier } from './html-table.ts'
+import { parseMarkdownTables } from './markdown-table.ts'
 import type { Extractor } from './types.ts'
 
-const SOURCE_URL = 'https://docs.anthropic.com/en/docs/about-claude/pricing'
+const PAGE_URL = 'https://docs.anthropic.com/en/docs/about-claude/pricing'
+/** Markdown rendering — smaller, and immune to docs-site markup changes. */
+const SOURCE_URL = `${PAGE_URL}.md`
 
 /**
  * Anthropic's table is flat, with prices written "$10 / MTok":
@@ -19,8 +22,8 @@ export const anthropicExtractor: Extractor = {
   sourceUrl: SOURCE_URL,
 
   async extract(ctx): Promise<NormalizedModel[]> {
-    const html = await ctx.fetchText(SOURCE_URL)
-    const tables = parseTables(html)
+    const markdown = await ctx.fetchText(SOURCE_URL)
+    const tables = parseMarkdownTables(markdown)
     const models = new Map<string, NormalizedModel>()
 
     for (const table of tables) {
@@ -83,7 +86,7 @@ export const anthropicExtractor: Extractor = {
             longCachedInputPrice: null,
             longOutputPrice: null,
             currency: input?.currency ?? output?.currency ?? 'USD',
-            sourceUrl: SOURCE_URL,
+            sourceUrl: PAGE_URL,
             sourceKind: 'scrape',
             raw: {
               caption: table.caption,

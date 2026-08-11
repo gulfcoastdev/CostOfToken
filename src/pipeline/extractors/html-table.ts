@@ -19,7 +19,8 @@ import { cleanText } from '../normalize.ts'
  * index, so a provider inserting a column doesn't shift everything by one.
  */
 
-export interface HtmlTable {
+/** A parsed table, produced by either the HTML or the markdown reader. */
+export interface SourceTable {
   /** Nearest enclosing heading, or <caption>. */
   caption: string
   /**
@@ -39,9 +40,9 @@ export interface HtmlTable {
 
 type AnyCheerio = cheerio.Cheerio<never>
 
-export function parseTables(html: string): HtmlTable[] {
+export function parseTables(html: string): SourceTable[] {
   const $ = cheerio.load(html)
-  const tables: HtmlTable[] = []
+  const tables: SourceTable[] = []
 
   // Walk headings and tables in document order, maintaining a heading stack,
   // so each table gets the full h1..h6 breadcrumb enclosing it.
@@ -71,7 +72,7 @@ function parseOneTable(
   $: cheerio.CheerioAPI,
   $table: AnyCheerio,
   headingPath: string[],
-): HtmlTable | null {
+): SourceTable | null {
   const allRows: Array<{ cells: string[]; allHeaderCells: boolean; inThead: boolean }> = []
 
   $table.find('tr').each((_i, tr) => {
@@ -137,7 +138,7 @@ function parseOneTable(
 }
 
 /** First breadcrumb entry matching `pattern`, searching nearest-first. */
-export function findInPath(table: HtmlTable, pattern: RegExp): string | null {
+export function findInPath(table: SourceTable, pattern: RegExp): string | null {
   return table.captionPath.find((entry) => pattern.test(entry)) ?? null
 }
 
@@ -149,9 +150,10 @@ export function findInPath(table: HtmlTable, pattern: RegExp): string | null {
  * rate would make the comparison wrong, so these tables are skipped entirely.
  * Tracking them as separate tiers is a later milestone.
  */
-export const NON_STANDARD_TIER = /\b(batch|flex|priority|fast mode|provisioned|scale tier)\b/i
+export const NON_STANDARD_TIER =
+  /\b(batch|flex|priority|provisioned|scale tier|fast (mode|pricing))\b/i
 
-export function isNonStandardTier(table: HtmlTable): boolean {
+export function isNonStandardTier(table: SourceTable): boolean {
   return table.captionPath.some((entry) => NON_STANDARD_TIER.test(entry))
 }
 

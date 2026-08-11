@@ -45,12 +45,31 @@ actually publishes. Verified live on 2026-08-10:
 
 | Provider | Source | How |
 | --- | --- | --- |
-| OpenAI | first-party | HTML table, two-row colspan header (short/long context) |
-| Anthropic | first-party | HTML table, `$10 / MTok` cells |
-| Google | first-party | HTML, one transposed table per model, four tier tables each |
+| OpenAI | first-party | **markdown** (`.md` suffix on the docs URL) |
+| Anthropic | first-party | **markdown** (`.md` suffix) |
+| Zhipu (GLM) | first-party | **markdown** (`.md` suffix), international USD docs |
 | xAI | first-party | **structured JSON** embedded in the docs RSC payload |
-| Zhipu (GLM) | first-party | HTML table on the international (USD) docs |
+| Google | first-party | HTML, one transposed table per model, four tier tables each |
 | DeepSeek, Alibaba (Qwen), Moonshot (Kimi), ByteDance, Baidu | secondary | OpenRouter catalogue |
+
+### Prefer markdown over HTML
+
+Several docs sites serve a markdown rendering by appending `.md` to the page
+URL (or sending `Accept: text/markdown`). Where it exists, use it — it is not
+merely tidier, it is *more correct*:
+
+- **Tiers become structure.** OpenAI's HTML renders Standard / Batch / Flex /
+  Fast as tabs. Tab labels aren't headings, so no parser can tell the tiers
+  apart — and because only the selected tab is in the document, most rows are
+  missing. The markdown has `### Standard pricing data` as a real heading.
+- **Coverage.** OpenAI's HTML exposed 13 models; the markdown lists 73.
+- **Size.** 20KB instead of 543KB.
+
+Switching Anthropic and Zhipu to markdown produced byte-identical output to
+the HTML parser, which is a useful check that the markdown reader is faithful.
+
+Google, DeepSeek and xAI have no `.md`; xAI needs none, as its docs embed the
+whole catalogue as JSON.
 
 **xAI** is the highest-fidelity source: its docs embed a full model catalogue
 (prices, context window, modalities, aliases) as JSON. Prices there are

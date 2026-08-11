@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { parseTieredCell } from '../src/pipeline/extractors/google.ts'
-import { openaiExtractor } from '../src/pipeline/extractors/openai.ts'
+import { openaiExtractor, splitModelQualifier } from '../src/pipeline/extractors/openai.ts'
+import { parseMarkdownTables } from '../src/pipeline/extractors/markdown-table.ts'
 import { findInPath, isNonStandardTier, parseTables } from '../src/pipeline/extractors/html-table.ts'
 import { decodeFlightPayload, extractModelObjects } from '../src/pipeline/extractors/xai.ts'
 
@@ -126,20 +127,67 @@ test('a repeated model keeps the first tier, not the last', async () => {
   // not a heading, so the breadcrumb can't tell them apart — and keying by
   // model id meant the last table won, storing Priority (2x standard) as the
   // headline price.
-  const html = `
-    <h2>Flagship models</h2>
-    <table>
-      <thead><tr><th>Model</th><th>Input</th><th>Output</th></tr></thead>
-      <tbody><tr><td>gpt-x</td><td>$5.00</td><td>$30.00</td></tr></tbody>
-    </table>
-    <table>
-      <thead><tr><th>Model</th><th>Input</th><th>Output</th></tr></thead>
-      <tbody><tr><td>gpt-x</td><td>$10.00</td><td>$60.00</td></tr></tbody>
-    </table>`
+  // The markdown source names its tiers, but this guards the case where two
+  // tables still collide — e.g. a tier heading we don't recognise.
+  const md = [
+    '## Flagship models',
+    '',
+    '| Model | Input | Output |',
+    '| --- | --- | --- |',
+    '| gpt-x | $5.00 | $30.00 |',
+    '',
+    '| Model | Input | Output |',
+    '| --- | --- | --- |',
+    '| gpt-x | $10.00 | $60.00 |',
+  ].join('\n')
 
-  const models = await openaiExtractor.extract({ fetchText: async () => html })
+  const models = await openaiExtractor.extract({ fetchText: async () => md })
 
   assert.equal(models.length, 1)
   assert.equal(models[0].pricing.inputPrice, 5)
   assert.equal(models[0].pricing.outputPrice, 30)
+})
+
+test('markdown tables carry heading breadcrumbs and unescape cells', () => {
+  const md = [
+    '# Pricing',
+    '',
+    '### Standard pricing data',
+    '',
+    '| Model | Input | Output |',
+    '| --- | --- | --- |',
+    '| gpt-x | $5.00 | $30.00 |',
+    '| GLM-5.2 | \\$1.4 | \\$4.4 |',
+    '| [Claude Opus 5](https://example.com) | $5 / MTok | $25 / MTok |',
+    '',
+    '### Batch pricing data',
+    '',
+    '| Model | Input | Output |',
+    '| --- | --- | --- |',
+    '| gpt-x | $2.50 | $15.00 |',
+  ].join('\n')
+
+  const [standard, batch] = parseMarkdownTables(md)
+
+  assert.deepEqual(standard.captionPath, ['Standard pricing data', 'Pricing'])
+  assert.deepEqual(standard.headers, ['Model', 'Input', 'Output'])
+  // Escaped dollars (Zhipu) and links around model names (Anthropic).
+  assert.deepEqual(standard.rows[1], ['GLM-5.2', '$1.4', '$4.4'])
+  assert.equal(standard.rows[2][0], 'Claude Opus 5')
+
+  assert.equal(isNonStandardTier(standard), false)
+  assert.equal(isNonStandardTier(batch), true)
+})
+
+test('splitModelQualifier separates the id from its context qualifier', () => {
+  // The qualifier states the long-context threshold, which is published
+  // nowhere else on the page.
+  assert.deepEqual(splitModelQualifier('gpt-5.5 (<272K context length)'), {
+    modelId: 'gpt-5.5',
+    threshold: 272_000,
+  })
+  assert.deepEqual(splitModelQualifier('gpt-5.6-sol'), {
+    modelId: 'gpt-5.6-sol',
+    threshold: null,
+  })
 })

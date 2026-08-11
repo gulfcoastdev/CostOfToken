@@ -1,9 +1,12 @@
 import type { NormalizedModel } from '@/lib/types.ts'
 import { inferModality, inferTags, parsePricePerMillion } from '../normalize.ts'
-import { cell, findColumn, findColumnExcluding, parseTables } from './html-table.ts'
+import { cell, findColumn, findColumnExcluding } from './html-table.ts'
+import { parseMarkdownTables } from './markdown-table.ts'
 import type { Extractor } from './types.ts'
 
-const SOURCE_URL = 'https://docs.z.ai/guides/overview/pricing'
+const PAGE_URL = 'https://docs.z.ai/guides/overview/pricing'
+/** Markdown rendering: 3KB instead of 277KB, and prices unescaped by the reader. */
+const SOURCE_URL = `${PAGE_URL}.md`
 
 /**
  * Zhipu's international docs publish a flat USD table:
@@ -19,8 +22,8 @@ export const zhipuExtractor: Extractor = {
   sourceUrl: SOURCE_URL,
 
   async extract(ctx): Promise<NormalizedModel[]> {
-    const html = await ctx.fetchText(SOURCE_URL)
-    const tables = parseTables(html)
+    const markdown = await ctx.fetchText(SOURCE_URL)
+    const tables = parseMarkdownTables(markdown)
     const models = new Map<string, NormalizedModel>()
 
     for (const table of tables) {
@@ -66,7 +69,7 @@ export const zhipuExtractor: Extractor = {
             longCachedInputPrice: null,
             longOutputPrice: null,
             currency: input?.currency ?? output?.currency ?? 'USD',
-            sourceUrl: SOURCE_URL,
+            sourceUrl: PAGE_URL,
             sourceKind: 'scrape',
             raw: { caption: table.caption, headers: table.headers, row },
           },

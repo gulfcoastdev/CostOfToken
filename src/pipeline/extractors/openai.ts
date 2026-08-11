@@ -1,22 +1,36 @@
 import type { NormalizedModel } from '@/lib/types.ts'
-import { inferModality, inferTags, parsePricePerMillion } from '../normalize.ts'
+import { inferModality, inferTags, parsePricePerMillion, parseTokenCount } from '../normalize.ts'
 import {
   cell,
   findColumn,
   findColumnExcluding,
   isNonStandardTier,
-  parseTables,
-  type HtmlTable,
+  type SourceTable,
 } from './html-table.ts'
+import { parseMarkdownTables } from './markdown-table.ts'
 import type { Extractor } from './types.ts'
 
-const SOURCE_URL = 'https://platform.openai.com/docs/pricing'
+const PAGE_URL = 'https://platform.openai.com/docs/pricing'
+/**
+ * OpenAI documents that any docs page is available as markdown by appending
+ * `.md`. That rendering is the better source by a wide margin — see the note
+ * on the extractor below.
+ */
+const SOURCE_URL = `${PAGE_URL}.md`
 
 /**
- * OpenAI publishes a two-row header grouping four sub-columns under "Short
- * context" and "Long context". After colspan expansion those become headers
- * like "Short context Input" / "Long context Output", which map directly onto
- * our standard and long-context tiers.
+ * Reads the markdown rendering of OpenAI's pricing page rather than the HTML.
+ *
+ * The HTML renders Standard / Batch / Flex / Fast as tabs. Tab labels are not
+ * headings, so a tier carries no structure a parser can see, and only the
+ * selected tab's rows are in the document. That cost us twice: the tiers were
+ * indistinguishable (the last one parsed silently overwrote standard pricing
+ * with Priority, at 2x the real rate), and the page exposed 13 models where
+ * the catalogue actually has 34.
+ *
+ * The markdown has "### Standard pricing data" / "### Batch pricing data" as
+ * real headings and lists every row, so both problems disappear. It is also
+ * ~26x smaller.
  *
  * "Cache writes" has no column in our schema — it's kept in raw_data.
  */
@@ -26,8 +40,8 @@ export const openaiExtractor: Extractor = {
   sourceUrl: SOURCE_URL,
 
   async extract(ctx): Promise<NormalizedModel[]> {
-    const html = await ctx.fetchText(SOURCE_URL)
-    const tables = parseTables(html)
+    const markdown = await ctx.fetchText(SOURCE_URL)
+    const tables = parseMarkdownTables(markdown)
     const models = new Map<string, NormalizedModel>()
 
     for (const table of tables) {
@@ -56,8 +70,14 @@ export const openaiExtractor: Extractor = {
       const unitHint = table.headers.join(' ')
 
       for (const row of table.rows) {
-        const modelId = cell(row, modelCol)
-        if (!modelId || looksLikeSectionRow(modelId)) continue
+        const rawModel = cell(row, modelCol)
+        if (!rawModel || looksLikeSectionRow(rawModel)) continue
+
+        // Rows read "gpt-5.5 (<272K context length)". The qualifier must not
+        // become part of the id — but it does state the threshold at which
+        // long-context pricing starts, which is otherwise unpublished.
+        const { modelId, threshold } = splitModelQualifier(rawModel)
+        if (!modelId) continue
 
         // Vendors repeat the same models across pricing tiers. Where the tier
         // is a tab rather than a heading, the breadcrumb can't distinguish
@@ -78,10 +98,10 @@ export const openaiExtractor: Extractor = {
         models.set(modelId, {
           providerSlug: 'openai',
           modelId,
-          displayName: modelId,
+          displayName: rawModel,
           contextWindow: null, // not published on the pricing page; supplied by the catalog
           maxOutputTokens: null,
-          longContextThreshold: lInput || lOutput ? 128_000 : null,
+          longContextThreshold: threshold ?? (lInput || lOutput ? 128_000 : null),
           modality: inferModality(modelId, table.caption),
           tags: inferTags(modelId, table.caption),
           isActive: true,
@@ -93,9 +113,9 @@ export const openaiExtractor: Extractor = {
             longCachedInputPrice: lCached?.value ?? null,
             longOutputPrice: lOutput?.value ?? null,
             currency: input?.currency ?? output?.currency ?? 'USD',
-            sourceUrl: SOURCE_URL,
+            sourceUrl: PAGE_URL,
             sourceKind: 'scrape',
-            raw: { caption: table.caption, headers: table.headers, row },
+            raw: { caption: table.caption, headers: table.headers, row, page: PAGE_URL },
           },
         })
       }
@@ -105,7 +125,28 @@ export const openaiExtractor: Extractor = {
   },
 }
 
-function isTokenPricingTable(table: HtmlTable): boolean {
+
+/**
+ * Separate a model id from its parenthetical qualifier.
+ *
+ * OpenAI's table labels rows like "gpt-5.5 (<272K context length)". Keeping the
+ * qualifier in the id would fork the model the moment the wording changed, but
+ * the number in it is the long-context threshold, which the pricing page states
+ * nowhere else.
+ */
+export function splitModelQualifier(raw: string): { modelId: string; threshold: number | null } {
+  const match = raw.match(/^\s*([^\s(]+)\s*(?:\((.*)\))?\s*$/)
+  if (!match) return { modelId: raw.trim(), threshold: null }
+
+  const modelId = match[1]
+  const qualifier = match[2]
+  if (!qualifier) return { modelId, threshold: null }
+
+  const contextMatch = qualifier.match(/<\s*([\d.,]+\s*[km]?)\s*context/i)
+  return { modelId, threshold: contextMatch ? parseTokenCount(contextMatch[1]) : null }
+}
+
+function isTokenPricingTable(table: SourceTable): boolean {
   const headerText = table.headers.join(' ').toLowerCase()
   if (/per (image|minute|second|character)|\/ ?(image|min|sec)\b/.test(headerText)) return false
   return /input|output/.test(headerText)
