@@ -73,9 +73,9 @@ export const openaiExtractor: Extractor = {
         const rawModel = cell(row, modelCol)
         if (!rawModel || looksLikeSectionRow(rawModel)) continue
 
-        // Rows read "gpt-5.5 (<272K context length)". The qualifier must not
-        // become part of the id — but it does state the threshold at which
-        // long-context pricing starts, which is otherwise unpublished.
+        // Rows read "gpt-5.5 (<272K context length)". The qualifier belongs in
+        // the long-context threshold, not in the id or the display name, where
+        // it would leak into headings, tables and page titles.
         const { modelId, threshold } = splitModelQualifier(rawModel)
         if (!modelId) continue
 
@@ -98,7 +98,7 @@ export const openaiExtractor: Extractor = {
         models.set(modelId, {
           providerSlug: 'openai',
           modelId,
-          displayName: rawModel,
+          displayName: modelId,
           contextWindow: null, // not published on the pricing page; supplied by the catalog
           maxOutputTokens: null,
           longContextThreshold: threshold ?? (lInput || lOutput ? 128_000 : null),

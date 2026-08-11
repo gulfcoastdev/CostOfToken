@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { notFound, permanentRedirect } from 'next/navigation'
 import { Breadcrumbs, JsonLd, PageShell, PriceStat, SiteFooter } from '@/components/site-chrome.tsx'
+import { SortablePriceTable } from '@/components/sortable-price-table.tsx'
 import { formatContext, formatPrice } from '@/lib/format.ts'
 import { getBrand, PROVIDER_ALIAS_MAP, PROVIDER_BRANDS } from '@/lib/provider-brands.ts'
 import { getLastUpdated, getProviderModels, getProviders } from '@/lib/queries.ts'
@@ -10,7 +11,6 @@ import {
   breadcrumbSchema,
   faqSchema,
   itemListSchema,
-  modelPath,
   priceText,
   providerPath,
 } from '@/lib/seo.ts'
@@ -63,7 +63,9 @@ export async function generateMetadata({
     // Metadata must still render if the database is unreachable.
   }
 
-  const priced = models.filter((m) => m.input !== null)
+  const priced = [...models]
+    .filter((m) => m.input !== null)
+    .sort((a, b) => (a.input ?? 0) - (b.input ?? 0))
   const cheapest = priced.at(0)
   const count = models.length
 
@@ -116,9 +118,13 @@ export default async function ProviderPage({ params }: { params: Promise<{ slug:
 
   if (models.length === 0) notFound()
 
-  const priced = models.filter((m) => m.input !== null)
+  // Sorted explicitly rather than read off the ends of `models`: that array is
+  // in the provider's publication order now, not price order.
+  const priced = [...models]
+    .filter((m) => m.input !== null)
+    .sort((a, b) => (a.input ?? 0) - (b.input ?? 0))
   const cheapest = priced.at(0)
-  const flagship = [...priced].sort((a, b) => (b.input ?? 0) - (a.input ?? 0)).at(0)
+  const flagship = priced.at(-1)
   const largestContext = [...models]
     .filter((m) => m.context_window !== null)
     .sort((a, b) => (b.context_window ?? 0) - (a.context_window ?? 0))
@@ -187,47 +193,11 @@ export default async function ProviderPage({ params }: { params: Promise<{ slug:
         )}
       </div>
 
-      <section className="mb-8 overflow-x-auto rounded-xl border border-neutral-200 bg-white">
-        <table className="w-full min-w-[720px] border-collapse text-sm">
-          <caption className="sr-only">
-            {brand.brand} models with input, cached input and output pricing per million tokens
-          </caption>
-          <thead>
-            <tr className="border-b border-neutral-200 text-left text-xs font-semibold text-neutral-500">
-              <th scope="col" className="px-3 py-2.5">Model</th>
-              <th scope="col" className="px-3 py-2.5 text-right">Input /1M</th>
-              <th scope="col" className="px-3 py-2.5 text-right">Cached /1M</th>
-              <th scope="col" className="px-3 py-2.5 text-right">Output /1M</th>
-              <th scope="col" className="px-3 py-2.5 text-right">Context</th>
-            </tr>
-          </thead>
-          <tbody>
-            {models.map((model) => (
-              <tr key={model.model_id} className="border-b border-neutral-100 last:border-0">
-                <th scope="row" className="px-3 py-2.5 text-left font-medium">
-                  <Link
-                    href={modelPath(model.provider, model.model_id)}
-                    className="font-semibold text-neutral-900 underline underline-offset-2 hover:text-emerald-700"
-                  >
-                    {model.display_name}
-                  </Link>
-                </th>
-                <td className="px-3 py-2.5 text-right font-semibold tabular-nums">
-                  {formatPrice(model.input)}
-                </td>
-                <td className="px-3 py-2.5 text-right tabular-nums text-neutral-700">
-                  {formatPrice(model.cached_input)}
-                </td>
-                <td className="px-3 py-2.5 text-right font-semibold tabular-nums">
-                  {formatPrice(model.output)}
-                </td>
-                <td className="px-3 py-2.5 text-right tabular-nums text-neutral-700">
-                  {formatContext(model.context_window)}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      <section className="mb-8">
+        <SortablePriceTable
+          rows={models}
+          caption={`${brand.brand} models with input, cached input and output pricing per million tokens`}
+        />
       </section>
 
       <section className="mb-8">

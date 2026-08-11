@@ -68,8 +68,9 @@ export async function upsertProviderModels(
   return await sql.begin(async (tx) => {
     const modelRows = await tx<Array<{ id: string; model_id: string }>>`
       insert into models ${tx(
-        models.map((m) => ({
+        models.map((m, index) => ({
           provider_id: providerId,
+          source_rank: index,
           model_id: m.modelId,
           display_name: m.displayName,
           context_window: m.contextWindow,
@@ -82,6 +83,7 @@ export async function upsertProviderModels(
       )}
       on conflict (provider_id, model_id) do update set
         display_name           = excluded.display_name,
+        source_rank            = excluded.source_rank,
         -- Keep a known context window if this run couldn't determine one.
         context_window         = coalesce(excluded.context_window, models.context_window),
         max_output_tokens      = coalesce(excluded.max_output_tokens, models.max_output_tokens),

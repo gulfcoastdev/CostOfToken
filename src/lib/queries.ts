@@ -281,7 +281,9 @@ export async function getProviderModels(provider: string): Promise<PriceRowV1[]>
     select *, count(*) over () as total_count
       from v_current_prices
      where provider = ${provider} and is_active
-     order by input_price asc nulls last
+     -- The provider's own page order first; anything without a recorded
+     -- position falls to the end rather than jumping to the top.
+     order by source_rank asc nulls last, input_price asc nulls last
   `
   return records.map(toPriceRow)
 }

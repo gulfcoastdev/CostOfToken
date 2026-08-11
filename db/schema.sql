@@ -62,7 +62,14 @@ drop trigger if exists models_set_updated_at on models;
 create trigger models_set_updated_at before update on models
   for each row execute function set_updated_at();
 
+-- The position a model occupies on its provider's own pricing page. Vendors
+-- list their newest and most important models first, so this is real editorial
+-- signal that costs nothing to capture — and beats us guessing an importance
+-- ranking from price alone.
+alter table models add column if not exists source_rank integer;
+
 create index if not exists models_provider_idx on models (provider_id);
+create index if not exists models_source_rank_idx on models (provider_id, source_rank);
 create index if not exists models_active_idx   on models (is_active) where is_active;
 create index if not exists models_tags_idx     on models using gin (tags);
 create index if not exists models_modality_idx on models using gin (modality);
@@ -255,7 +262,8 @@ select
   pr.effective_date,
   pr.source_url,
   pr.source_kind,
-  pr.updated_at
+  pr.updated_at,
+  m.source_rank
 from models m
   join providers p on p.id = m.provider_id
   left join prices pr on pr.model_id = m.id;
