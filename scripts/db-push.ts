@@ -7,19 +7,17 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import postgres from 'postgres'
-import { describeDatabase, loadEnv } from './load-env.ts'
+import { describeDatabase, loadEnv, resolveDatabaseUrl } from './load-env.ts'
 
 loadEnv()
 
-// Accept the Vercel Supabase integration's injected names too, so the same
-// command works whether the URL was set by hand or by the integration.
-const url =
-  process.env.DATABASE_URL ||
-  process.env.POSTGRES_URL ||
-  process.env.POSTGRES_PRISMA_URL ||
-  process.env.SUPABASE_DB_URL
+const { url, remote } = resolveDatabaseUrl()
 if (!url) {
-  console.error('No database URL set. Copy .env.example to .env.local and fill in DATABASE_URL.')
+  console.error(
+    remote
+      ? 'No remote database URL set. Add SUPABASE_DB_URL to .env.local.'
+      : 'No DATABASE_URL set. Copy .env.example to .env.local and fill it in.',
+  )
   process.exit(1)
 }
 

@@ -5,7 +5,7 @@
  *   npm run pipeline:run                  # extract and persist
  *   npm run pipeline:dry -- --only=xai,openai
  */
-import { describeDatabase, loadEnv } from './load-env.ts'
+import { describeDatabase, loadEnv, resolveDatabaseUrl } from './load-env.ts'
 
 loadEnv()
 
@@ -21,18 +21,20 @@ const only = onlyArg
       .filter(Boolean)
   : undefined
 
-const hasDatabase =
-  process.env.DATABASE_URL ||
-  process.env.POSTGRES_URL ||
-  process.env.POSTGRES_PRISMA_URL ||
-  process.env.SUPABASE_DB_URL
-if (!dryRun && !hasDatabase) {
-  console.error('No database URL set. Use --dry-run to extract without writing.')
+const { url: databaseUrl, remote } = resolveDatabaseUrl()
+if (!dryRun && !databaseUrl) {
+  console.error(
+    remote
+      ? 'No remote database URL set. Add SUPABASE_DB_URL to .env.local.'
+      : 'No DATABASE_URL set. Use --dry-run to extract without writing.',
+  )
   process.exit(1)
 }
+// The pipeline reads DATABASE_URL, so point it at whichever was selected.
+if (databaseUrl) process.env.DATABASE_URL = databaseUrl
 
-if (!dryRun && hasDatabase) {
-  console.log(`Writing to: ${describeDatabase(hasDatabase)}`)
+if (!dryRun && databaseUrl) {
+  console.log(`Writing to: ${describeDatabase(databaseUrl)}`)
 }
 
 const { runPipeline } = await import('../src/pipeline/run.ts')

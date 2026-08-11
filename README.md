@@ -36,6 +36,33 @@ DATABASE_URL="postgresql://postgres:devpw@127.0.0.1:55432/costoftoken"
 CRON_SECRET="local-dev-secret"
 ```
 
+### Two databases without mixing them up
+
+Keep the remote under a **different name**, never a second `DATABASE_URL`. Env
+files do not merge duplicate keys or warn about them — the last definition
+silently wins, so a stray second `DATABASE_URL` makes every "local" command
+write to production.
+
+```bash
+# .env.local
+DATABASE_URL="postgresql://postgres:devpw@127.0.0.1:55432/costoftoken"  # default
+SUPABASE_DB_URL="postgresql://postgres.<ref>:<pw>@aws-1-<region>.pooler.supabase.com:6543/postgres"
+```
+
+Every command defaults to `DATABASE_URL` and reaches the remote only with an
+explicit `--remote`:
+
+```bash
+npm run db:status               # LOCAL
+npm run db:status -- --remote   # REMOTE, with row counts
+npm run db:push     -- --remote
+npm run pipeline:run -- --remote
+```
+
+Writes print `LOCAL` or `REMOTE` with the host first, so the target is visible
+before anything changes. On Vercel only one URL exists, so the flag is
+irrelevant there and the app reads whichever variable is set.
+
 ---
 
 ## How pricing is collected

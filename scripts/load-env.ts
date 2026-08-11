@@ -34,3 +34,42 @@ export function describeDatabase(url: string): string {
     return 'unparseable connection string'
   }
 }
+
+/**
+ * Pick the database to act on.
+ *
+ * `DATABASE_URL` is the local development database and the default for every
+ * command. The remote is held under a *different* name and only selected by an
+ * explicit `--remote` flag, so no command can reach production by accident.
+ *
+ * Defining `DATABASE_URL` twice in one env file does not merge the two — the
+ * last definition silently wins — so keeping the two under separate names is
+ * what actually prevents the mix-up.
+ */
+export function resolveDatabaseUrl(argv: string[] = process.argv): {
+  url: string | undefined
+  remote: boolean
+} {
+  const remote = argv.includes('--remote')
+
+  if (remote) {
+    return {
+      url:
+        process.env.SUPABASE_DB_URL ||
+        process.env.PRODUCTION_DATABASE_URL ||
+        // Fall back to the injected names so this works on Vercel too.
+        process.env.POSTGRES_URL ||
+        process.env.POSTGRES_PRISMA_URL,
+      remote,
+    }
+  }
+
+  return {
+    url:
+      process.env.DATABASE_URL ||
+      process.env.POSTGRES_URL ||
+      process.env.POSTGRES_PRISMA_URL ||
+      process.env.SUPABASE_DB_URL,
+    remote,
+  }
+}
