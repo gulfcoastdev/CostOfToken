@@ -23,7 +23,11 @@ function createClient(): postgres.Sql {
     // makes individual pages hang rather than fail loudly.
     max: 3,
     idle_timeout: 20,
-    connect_timeout: 15,
+    // Short on purpose. A hung connection during `next build` is fatal — the
+    // page export gives up after 60s and the whole deploy fails — whereas a
+    // fast failure lets the page render its fallback and be corrected by the
+    // next revalidation.
+    connect_timeout: 8,
     // numeric(12,6) arrives as a string by default to avoid float precision
     // loss. Prices are small enough that a JS number is exact here, and the
     // API contract says these are numbers.
