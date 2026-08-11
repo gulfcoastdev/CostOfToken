@@ -11,37 +11,43 @@ import { useEffect, useState } from 'react'
  * it. Starting denied and granting is the safe order; the reverse would drop a
  * cookie before the visitor could decline.
  *
- * Region comes from a cookie set at the edge from Vercel's geolocation. Where
- * that's missing — local development, or a request that skipped middleware —
- * it falls back to the browser's timezone, which is a reasonable proxy and
- * requires no IP lookup of our own.
+ * Region is fetched from a small endpoint rather than decided inside the page
+ * response. Deciding it in middleware meant setting a cookie, which makes Next
+ * mark the page `no-store` and silently disables CDN caching for every page it
+ * touches. Where the endpoint cannot answer — local development — it falls
+ * back to the browser's timezone.
  */
 
 const STORAGE_KEY = 'cot-consent.v1'
-const REGION_COOKIE = 'cot-region'
 
 type Choice = 'granted' | 'denied'
 
-function readCookie(name: string): string | null {
-  if (typeof document === 'undefined') return null
-  const match = document.cookie.match(new RegExp(`(?:^|; )${name}=([^;]*)`))
-  return match ? decodeURIComponent(match[1]) : null
-}
-
-function needsConsent(): boolean {
-  const region = readCookie(REGION_COOKIE)
-  if (region === 'eu') return true
-  if (region === 'other') return false
-
-  // No region cookie: infer from timezone rather than assuming either way.
+/** Timezone proxy, used when the region endpoint cannot answer. */
+function timezoneSuggestsEurope(): boolean {
   try {
     const zone = Intl.DateTimeFormat().resolvedOptions().timeZone ?? ''
     return zone.startsWith('Europe/') || zone === 'Atlantic/Canary' || zone === 'Atlantic/Madeira'
   } catch {
-    // If we cannot tell, assume consent is required. Erring toward asking is
-    // the only direction that is safe.
+    // If we cannot tell, ask. Erring toward asking is the only safe direction.
     return true
   }
+}
+
+/**
+ * Asks the edge which rules apply. Deliberately a separate request: deciding
+ * this inside the page response would make every page uncacheable.
+ */
+async function needsConsent(): Promise<boolean> {
+  try {
+    const response = await fetch('/api/region', { cache: 'no-store' })
+    if (response.ok) {
+      const { consentRequired } = (await response.json()) as { consentRequired: boolean | null }
+      if (typeof consentRequired === 'boolean') return consentRequired
+    }
+  } catch {
+    // Offline or blocked; fall through to the local heuristic.
+  }
+  return timezoneSuggestsEurope()
 }
 
 function applyConsent(choice: Choice) {
@@ -70,13 +76,17 @@ export function ConsentBanner() {
       return
     }
 
-    if (needsConsent()) {
-      setVisible(true)
-      return
-    }
+    let cancelled = false
+    needsConsent().then((required) => {
+      if (cancelled) return
+      if (required) setVisible(true)
+      // Outside the consent regimes, analytics runs without prompting.
+      else applyConsent('granted')
+    })
 
-    // Outside the consent regimes, analytics runs without prompting.
-    applyConsent('granted')
+    return () => {
+      cancelled = true
+    }
   }, [])
 
   const decide = (choice: Choice) => {
