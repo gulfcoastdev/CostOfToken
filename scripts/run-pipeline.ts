@@ -21,8 +21,13 @@ const only = onlyArg
       .filter(Boolean)
   : undefined
 
-if (!dryRun && !process.env.DATABASE_URL) {
-  console.error('DATABASE_URL is not set. Use --dry-run to extract without writing.')
+const hasDatabase =
+  process.env.DATABASE_URL ||
+  process.env.POSTGRES_URL ||
+  process.env.POSTGRES_PRISMA_URL ||
+  process.env.SUPABASE_DB_URL
+if (!dryRun && !hasDatabase) {
+  console.error('No database URL set. Use --dry-run to extract without writing.')
   process.exit(1)
 }
 

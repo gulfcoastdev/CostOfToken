@@ -11,9 +11,15 @@ import { loadEnv } from './load-env.ts'
 
 loadEnv()
 
-const url = process.env.DATABASE_URL
+// Accept the Vercel Supabase integration's injected names too, so the same
+// command works whether the URL was set by hand or by the integration.
+const url =
+  process.env.DATABASE_URL ||
+  process.env.POSTGRES_URL ||
+  process.env.POSTGRES_PRISMA_URL ||
+  process.env.SUPABASE_DB_URL
 if (!url) {
-  console.error('DATABASE_URL is not set. Copy .env.example to .env.local and fill it in.')
+  console.error('No database URL set. Copy .env.example to .env.local and fill in DATABASE_URL.')
   process.exit(1)
 }
 
