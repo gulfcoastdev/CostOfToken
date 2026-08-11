@@ -3,7 +3,12 @@ import { getBrand } from '@/lib/provider-brands.ts'
 import { absoluteUrl, providerPath, SITE } from '@/lib/seo.ts'
 
 export const runtime = 'nodejs'
-export const revalidate = 3600
+/**
+ * Generated per request rather than at build time — see src/app/page.tsx.
+ * Reading the database during the build is what fails; serving it on demand
+ * works, and the response is CDN-cached by its Cache-Control anyway.
+ */
+export const dynamic = 'force-dynamic'
 
 /**
  * /llms.txt — the index an LLM reads to find its way around the site.

@@ -2,7 +2,12 @@ import type { MetadataRoute } from 'next'
 import { getAllModelRefs, getLastUpdated, getProviders } from '@/lib/queries.ts'
 import { absoluteUrl, modelPath, providerPath } from '@/lib/seo.ts'
 
-export const revalidate = 3600
+/**
+ * Generated per request rather than at build time — see src/app/page.tsx.
+ * Reading the database during the build is what fails; serving it on demand
+ * works, and the response is CDN-cached by its Cache-Control anyway.
+ */
+export const dynamic = 'force-dynamic'
 
 /**
  * Generated from the database so it reflects what actually exists.
