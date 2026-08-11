@@ -23,6 +23,25 @@ export function Analytics() {
 
   return (
     <>
+      {/*
+        Consent Mode v2 defaults, set with beforeInteractive so they are in the
+        dataLayer before gtag.js runs. Denied first, granted later: the reverse
+        order would drop a cookie before a visitor in a consent regime had any
+        chance to decline. Advertising signals stay denied permanently — this
+        site does not run ads.
+      */}
+      <Script id="ga4-consent-default" strategy="beforeInteractive">
+        {`window.dataLayer = window.dataLayer || [];
+function gtag(){dataLayer.push(arguments);}
+window.gtag = window.gtag || gtag;
+gtag('consent', 'default', {
+  analytics_storage: 'denied',
+  ad_storage: 'denied',
+  ad_user_data: 'denied',
+  ad_personalization: 'denied',
+  wait_for_update: 500
+});`}
+      </Script>
       <Script
         src={`https://www.googletagmanager.com/gtag/js?id=${measurementId}`}
         strategy="afterInteractive"
@@ -30,8 +49,9 @@ export function Analytics() {
       <Script id="ga4-init" strategy="afterInteractive">
         {`window.dataLayer = window.dataLayer || [];
 function gtag(){dataLayer.push(arguments);}
+window.gtag = window.gtag || gtag;
 gtag('js', new Date());
-gtag('config', '${measurementId}');`}
+gtag('config', '${measurementId}', { anonymize_ip: true });`}
       </Script>
     </>
   )

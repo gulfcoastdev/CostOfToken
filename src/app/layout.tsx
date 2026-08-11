@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import { Analytics } from '@/components/analytics.tsx'
+import { ConsentBanner } from '@/components/consent-banner.tsx'
 import { SiteNav } from '@/components/site-nav.tsx'
 import { SITE, SITE_URL } from '@/lib/seo.ts'
 import './globals.css'
@@ -75,6 +76,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <SiteNav />
         {children}
         <Analytics />
+        <ConsentBanner />
       </body>
     </html>
   )
