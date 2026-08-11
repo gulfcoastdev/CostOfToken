@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { parseTieredCell } from '../src/pipeline/extractors/google.ts'
+import { openaiExtractor } from '../src/pipeline/extractors/openai.ts'
 import { findInPath, isNonStandardTier, parseTables } from '../src/pipeline/extractors/html-table.ts'
 import { decodeFlightPayload, extractModelObjects } from '../src/pipeline/extractors/xai.ts'
 
@@ -117,4 +118,28 @@ test('xAI object extraction survives braces inside string values', () => {
 
   const [found] = extractModelObjects(decodeFlightPayload(html))
   assert.equal(found.name, 'grok-braces')
+})
+
+test('a repeated model keeps the first tier, not the last', async () => {
+  // Regression guard: OpenAI renders Standard/Batch/Flex/Priority as four
+  // tables with identical headers under one heading. The tier name is a tab,
+  // not a heading, so the breadcrumb can't tell them apart — and keying by
+  // model id meant the last table won, storing Priority (2x standard) as the
+  // headline price.
+  const html = `
+    <h2>Flagship models</h2>
+    <table>
+      <thead><tr><th>Model</th><th>Input</th><th>Output</th></tr></thead>
+      <tbody><tr><td>gpt-x</td><td>$5.00</td><td>$30.00</td></tr></tbody>
+    </table>
+    <table>
+      <thead><tr><th>Model</th><th>Input</th><th>Output</th></tr></thead>
+      <tbody><tr><td>gpt-x</td><td>$10.00</td><td>$60.00</td></tr></tbody>
+    </table>`
+
+  const models = await openaiExtractor.extract({ fetchText: async () => html })
+
+  assert.equal(models.length, 1)
+  assert.equal(models[0].pricing.inputPrice, 5)
+  assert.equal(models[0].pricing.outputPrice, 30)
 })

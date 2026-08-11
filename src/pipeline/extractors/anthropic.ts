@@ -62,6 +62,8 @@ export const anthropicExtractor: Extractor = {
 
         const cached = parsePricePerMillion(cell(row, cachedCol), unitHint)
         const modelId = toModelId(displayName)
+        // First table wins — see the note in openai.ts on tier tabs.
+        if (models.has(modelId)) continue
 
         models.set(modelId, {
           providerSlug: 'anthropic',

@@ -59,6 +59,13 @@ export const openaiExtractor: Extractor = {
         const modelId = cell(row, modelCol)
         if (!modelId || looksLikeSectionRow(modelId)) continue
 
+        // Vendors repeat the same models across pricing tiers. Where the tier
+        // is a tab rather than a heading, the breadcrumb can't distinguish
+        // them, so the first table wins: it is the default (standard) tier.
+        // Without this the last tier parsed silently overwrites the standard
+        // rate — OpenAI's Priority table is 2x standard.
+        if (models.has(modelId)) continue
+
         const input = parsePricePerMillion(cell(row, shortInput), unitHint)
         const output = parsePricePerMillion(cell(row, shortOutput), unitHint)
         if (!input && !output) continue

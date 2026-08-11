@@ -73,6 +73,8 @@ export const googleExtractor: Extractor = {
       const cached = cachedRow ? parseTieredCell(cell(cachedRow, paidCol), unitHint) : null
 
       const modelId = toModelId(displayName)
+      // First table wins — see the note in openai.ts on tier tabs.
+      if (models.has(modelId)) continue
       const threshold = input?.threshold ?? output?.threshold ?? null
 
       models.set(modelId, {

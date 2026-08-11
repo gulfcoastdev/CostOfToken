@@ -38,12 +38,15 @@ export const zhipuExtractor: Extractor = {
         const displayName = cell(row, modelCol)
         if (!displayName) continue
 
+        const modelId = displayName.toLowerCase().replace(/\s+/g, '-')
+        // First table wins — see the note in openai.ts on tier tabs.
+        if (models.has(modelId)) continue
+
         const input = parsePricePerMillion(cell(row, inputCol), unitHint)
         const output = parsePricePerMillion(cell(row, outputCol), unitHint)
         if (!input && !output) continue
 
         const cached = parsePricePerMillion(cell(row, cachedCol), unitHint)
-        const modelId = displayName.toLowerCase().replace(/\s+/g, '-')
 
         models.set(modelId, {
           providerSlug: 'zhipu',
