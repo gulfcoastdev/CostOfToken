@@ -418,6 +418,10 @@ background.
 The "what that buys you" token counts are rough illustrations and are labelled
 as such.
 
+## Roadmap
+
+Planned work and its ordering live in [`BACKLOG.md`](BACKLOG.md).
+
 ## Status
 
 **Done and verified:** schema + triggers, all 10 provider extractors,
