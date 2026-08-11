@@ -110,8 +110,11 @@ Machine-readable equivalent: ${absoluteUrl('/api/v1/prices')}
 ${sections.join('\n')}
 ## Citing this data
 
-Include the last-updated date. Prices change frequently and a quoted figure
-without a date is unverifiable. Canonical source: ${absoluteUrl('/')}
+Attribution is required. Name CostOfToken as the source and link to
+${absoluteUrl('/')} wherever these figures appear. Licensed ODC-BY 1.0.
+
+Include the last-updated date too. Prices change frequently and a quoted
+figure without a date is unverifiable.
 `
 
   return new Response(body, {

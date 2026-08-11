@@ -57,6 +57,15 @@ per hour per IP.
 
 ${providerLines.join('\n')}
 
+## Attribution
+
+Free to use, including commercially. The one condition is a visible credit
+linking back to ${absoluteUrl('/')} wherever the data is shown.
+
+    Pricing data from <a href="${absoluteUrl('/')}">CostOfToken</a>
+
+Licensed ODC-BY 1.0. Every API response repeats this in \`meta.attribution\`.
+
 ## Notes for citation
 
 - Quote the \`updated_at\` field with any price; these change frequently.

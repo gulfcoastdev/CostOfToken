@@ -25,6 +25,11 @@ const FAQS = [
       'Yes. No signup and no API key. Anonymous callers get 60 requests per hour per IP; responses carry X-RateLimit headers and a 429 includes Retry-After.',
   },
   {
+    question: 'Do I have to link back?',
+    answer:
+      'Yes. The data is free to use commercially, including in paid products, but any page or app that displays it must carry a visible credit linking to costoftoken.com. That link is what funds keeping the data current. Every API response repeats the requirement in meta.attribution.',
+  },
+  {
     question: 'How often does the pricing data change?',
     answer:
       'Prices are re-read from each provider once a day. A value is only recorded when it actually changes, so the history endpoint returns real price movements rather than one row per day.',
@@ -32,7 +37,7 @@ const FAQS = [
   {
     question: 'Can I use this data commercially?',
     answer:
-      'Yes, and attribution is appreciated. Always confirm a price against the provider before committing spend — rows sourced from a reseller are marked source_kind "api" and can differ from the vendor’s own rate.',
+      'Yes, free of charge, on one condition: display a visible credit linking back to costoftoken.com wherever the data appears. Always confirm a price against the provider before committing spend — rows sourced from a reseller are marked source_kind "api" and can differ from the vendor’s own rate.',
   },
 ]
 
@@ -77,7 +82,11 @@ export default async function ApiDocsPage() {
       <header className="mb-6">
         <h1 className="m-0 text-3xl font-bold tracking-tight text-neutral-950">Pricing API</h1>
         <p className="mt-2 max-w-3xl text-[15px] leading-relaxed text-neutral-700">
-          Every price on this site is available as JSON. Free, no signup, no key.{' '}
+          Every price on this site is available as JSON. Free, no signup, no key —{' '}
+          <a href="#attribution" className="text-emerald-700 underline underline-offset-2">
+            a backlink is required
+          </a>
+          .{' '}
           {modelCount > 0 && (
             <>
               Currently {modelCount} models across 10 providers
@@ -86,6 +95,39 @@ export default async function ApiDocsPage() {
           )}
         </p>
       </header>
+
+      <section id="attribution" className="mb-8 scroll-mt-4 rounded-xl border border-emerald-300 bg-emerald-50 px-5 py-4">
+        <h2 className="m-0 text-lg font-semibold tracking-tight text-emerald-950">
+          Attribution required
+        </h2>
+        <p className="m-0 mt-1.5 text-[15px] leading-relaxed text-emerald-900">
+          The API is free, including for commercial use. The one condition is a{' '}
+          <strong>visible credit linking back to this site</strong> anywhere the data is displayed.
+          A link in a footer, a caption under a table, or an &ldquo;via&rdquo; line is fine. That
+          link is what pays for keeping 216 models current every day.
+        </p>
+        <p className="m-0 mt-3 text-[13px] font-semibold uppercase tracking-wide text-emerald-800">
+          Paste this
+        </p>
+        <pre className="mt-1.5 overflow-x-auto rounded-lg border border-emerald-200 bg-white p-3 text-[13px] leading-relaxed text-neutral-800">
+          <code>{`Pricing data from <a href="${SITE.url}">CostOfToken</a>`}</code>
+        </pre>
+        <p className="m-0 mt-3 text-[13.5px] leading-relaxed text-emerald-900">
+          Licensed under{' '}
+          <a
+            href="https://opendatacommons.org/licenses/by/1-0/"
+            target="_blank"
+            rel="noopener"
+            className="underline underline-offset-2"
+          >
+            ODC-BY 1.0
+          </a>
+          . Every response also carries the requirement in{' '}
+          <code className="font-mono text-[12.5px]">meta.attribution</code> and an{' '}
+          <code className="font-mono text-[12.5px]">X-Attribution-Required</code> header, so it is
+          hard to miss while integrating.
+        </p>
+      </section>
 
       <section className="mb-8">
         <h2 className="mb-3 text-xl font-semibold tracking-tight text-neutral-950">Try it</h2>

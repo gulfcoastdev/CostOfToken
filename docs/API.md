@@ -6,6 +6,20 @@ All prices are **USD per 1,000,000 tokens** unless a row's `currency` says
 otherwise. `null` means the provider publishes no such tier; `0` means it is
 genuinely free.
 
+## Attribution — required
+
+The API is free, including for commercial use, on one condition: display a
+visible credit linking back wherever the data appears.
+
+```html
+Pricing data from <a href="https://www.costoftoken.com">CostOfToken</a>
+```
+
+Licensed under [ODC-BY 1.0](https://opendatacommons.org/licenses/by/1-0/).
+Every response repeats the requirement in `meta.attribution` and in an
+`X-Attribution-Required` header, so it is visible while integrating rather than
+only in this document.
+
 ## Response envelope
 
 Every successful response shares one shape:
@@ -15,6 +29,12 @@ Every successful response shares one shape:
   "meta": {
     "version": "v1",
     "count": 3,
+    "attribution": {
+      "required": true,
+      "text": "Pricing data from CostOfToken",
+      "url": "https://www.costoftoken.com",
+      "license": "https://opendatacommons.org/licenses/by/1-0/"
+    },
     "total": 163,
     "limit": 100,
     "offset": 0,

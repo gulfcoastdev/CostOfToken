@@ -1,13 +1,31 @@
 import { NextResponse } from 'next/server'
 import { checkRateLimit, rateLimitHeaders } from './rate-limit.ts'
+import { SITE_URL } from './seo.ts'
 
 /** Shared response envelope and rate-limit gate for every /api/v1 route. */
 
 export const API_VERSION = 'v1'
 
+/**
+ * Licence terms, returned with every response.
+ *
+ * The data is free to use and the only condition is a visible credit linking
+ * back. Stating it in the payload means an integrator sees it while wiring the
+ * call, rather than only if they happen to read the docs page.
+ */
+export const ATTRIBUTION = {
+  required: true,
+  text: 'Pricing data from CostOfToken',
+  url: SITE_URL,
+  html: `Pricing data from <a href="${SITE_URL}">CostOfToken</a>`,
+  license: 'https://opendatacommons.org/licenses/by/1-0/',
+  terms: `${SITE_URL}/api-docs#attribution`,
+} as const
+
 export interface ApiMeta {
   version: string
   count: number
+  attribution?: typeof ATTRIBUTION
   total?: number
   limit?: number
   offset?: number
@@ -20,10 +38,14 @@ export function jsonResponse<T>(
   headers: Record<string, string> = {},
 ): NextResponse {
   return NextResponse.json(
-    { meta: { version: API_VERSION, count: data.length, ...meta }, data },
+    { meta: { version: API_VERSION, count: data.length, attribution: ATTRIBUTION, ...meta }, data },
     {
       headers: {
         'cache-control': 'public, s-maxage=300, stale-while-revalidate=3600',
+        // ASCII only: header values are ByteStrings, so anything above U+00FF
+        // throws at response construction and takes the endpoint down with it.
+        'x-attribution-required': `${ATTRIBUTION.text}: ${ATTRIBUTION.url}`,
+        link: `<${ATTRIBUTION.license}>; rel="license"`,
         ...headers,
       },
     },

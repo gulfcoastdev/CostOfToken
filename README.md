@@ -306,6 +306,10 @@ GET /api/v1/providers                    # providers + model counts
 }
 ```
 
+Free to use, including commercially, provided a visible credit links back to
+the site — the requirement travels in `meta.attribution` and an
+`X-Attribution-Required` header on every response, not just in the docs.
+
 Rate limited to 60 requests/hour per IP (configurable), with higher per-key
 limits via the `api_keys` table. Returns `429` with `Retry-After` and
 `X-RateLimit-*` headers. Counters live in Postgres — no Redis to provision — and
