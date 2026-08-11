@@ -21,14 +21,15 @@ export const revalidate = 3600
 /**
  * Rendered on first request, not at build time.
  *
- * Prerendering these made the build depend on reaching the database, which is
- * the wrong dependency for a deploy: Vercel marks environment variables
- * "Sensitive" by default and those are not exposed during the build, so a
- * perfectly configured project still fails to compile pages that need data.
+ * Prerendering made the build depend on reaching the database, which is the
+ * wrong dependency for a deploy. When the connection string was wrong, every
+ * page sat waiting on an unresolvable host until Next's 60-second per-page
+ * limit killed it, and the whole build failed — a misconfigured environment
+ * variable should degrade one page at runtime, not block shipping entirely.
  *
  * With `revalidate` set, the first request renders and caches each page and
- * everything after is served from cache, so the pages are still static in
- * practice — but a deploy can never be blocked by database reachability.
+ * everything after is served from cache, so pages are still static in
+ * practice.
  */
 export async function generateStaticParams() {
   return []
