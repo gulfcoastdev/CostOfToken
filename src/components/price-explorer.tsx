@@ -407,7 +407,16 @@ export function PriceExplorer({ rows, providers, updatedAt, providerSlugs }: Exp
 
       <FunStatsCard avgInput={stats.avgInput} />
 
-      <div className="sticky top-0 z-20 mb-4 rounded-xl border border-neutral-200 bg-white p-4 shadow-sm">
+      {/*
+        Not sticky on small screens. Wrapped across five rows it takes roughly
+        half a phone viewport, so pinning it leaves almost nothing for the table
+        it is meant to filter — and it overlapped the rows.
+
+        z-40 keeps it above the table's own sticky header, which uses z-30 for
+        the pinned columns. At z-20 the two tied and DOM order decided, so the
+        header painted over the toolbar.
+      */}
+      <div className="relative z-40 mb-4 rounded-xl border border-neutral-200 bg-white p-4 shadow-sm sm:sticky sm:top-0">
         <div className="flex flex-wrap gap-2">
           {providers.map((provider) => {
             const active = selectedProviders.includes(provider.slug)
@@ -814,7 +823,12 @@ function PriceRow({
           {rank}
         </td>
         <td style={cellStyle} className="sticky left-11 z-10 px-3 py-2.5">
-          <div className="flex flex-wrap items-center gap-1.5">
+          {/*
+            The star stays on the name's first line. Previously the whole row
+            was a wrap container, so a long name pushed the star onto a line of
+            its own and doubled the row height on narrow screens.
+          */}
+          <div className="flex items-start gap-1.5">
             <button
               type="button"
               onClick={(event) => {
@@ -828,7 +842,7 @@ function PriceRow({
                   : `Add ${row.display_name} to popular models`
               }
               title={pinned ? 'Remove from Popular models' : 'Add to Popular models'}
-              className={`shrink-0 rounded text-base leading-none focus-visible:outline-2 focus-visible:outline-emerald-600 ${
+              className={`mt-0.5 shrink-0 rounded text-base leading-none focus-visible:outline-2 focus-visible:outline-emerald-600 ${
                 pinned ? 'text-amber-500' : 'text-neutral-300 hover:text-neutral-500'
               }`}
             >
@@ -849,12 +863,12 @@ function PriceRow({
               {row.display_name}
             </button>
             {isFree && (
-              <span className="whitespace-nowrap rounded-full bg-sky-50 px-1.5 py-0.5 text-[10px] font-bold text-sky-700">
+              <span className="mt-0.5 whitespace-nowrap rounded-full bg-sky-50 px-1.5 py-0.5 text-[10px] font-bold text-sky-700">
                 Free
               </span>
             )}
             {isTop && (
-              <span className="whitespace-nowrap rounded-full bg-emerald-50 px-1.5 py-0.5 text-[10px] font-bold text-emerald-700">
+              <span className="mt-0.5 whitespace-nowrap rounded-full bg-emerald-50 px-1.5 py-0.5 text-[10px] font-bold text-emerald-700">
                 Best value
               </span>
             )}
