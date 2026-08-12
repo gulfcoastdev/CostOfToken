@@ -17,6 +17,18 @@ export const metadata: Metadata = {
 }
 
 /**
+ * Statically rendered and revalidated, not per request.
+ *
+ * These were forced dynamic to get deploys unblocked while the build hung on
+ * data-backed pages. That hang was the same deadlock that hung the runtime —
+ * concurrent reads on one database connection — and the build prerenders pages
+ * in parallel, which is what triggered it there. With reads now sequential the
+ * build succeeds, so the pages go back to being cached: without this every
+ * request paid for a database round trip and cold requests timed out.
+ */
+export const revalidate = 300
+
+/**
  * Answers to the questions this page exists to settle. Rendered as visible
  * copy and mirrored into FAQ structured data, so search and answer engines
  * quote the same wording a reader sees.
@@ -48,34 +60,6 @@ const HOME_FAQS = [
       'Yes. GET /api/v1/prices returns the whole table as JSON, free and without signup, rate limited to 60 requests per hour per IP. /llms-full.txt serves the same data as markdown for LLM ingestion.',
   },
 ]
-
-/**
- * The comparison table.
- *
- * Data is read on the server straight from Postgres and handed to a client
- * component for filtering and sorting. The whole set is sent at once — 200-odd
- * rows is a few tens of KB — so every filter and sort is instant with no
- * round trip.
- *
- * Deliberately does NOT read searchParams. Doing so opts the page out of
- * static rendering, which made it the only page that queried the database on
- * every single request — enough to saturate the connection pooler under load
- * while every other page was served from cache. The filter parameters only
- * seed client state, so the client reads them from the URL itself and this
- * page stays cached.
- */
-/**
- * Rendered per request, not prerendered.
- *
- * Production builds were failing because this page reads pricing, and the
- * build environment cannot reach the database — every data-backed page hung
- * for 60 seconds and the export aborted, while the same queries answer in
- * under a second at runtime. Until that is understood (see scripts/db-probe.ts,
- * which reports connectivity in the build log), the build must not depend on
- * the database at all: a deploy that cannot ship is worse than a page that
- * renders on demand.
- */
-export const dynamic = 'force-dynamic'
 
 export default async function HomePage() {
   let rows: ExplorerRow[] = []

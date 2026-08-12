@@ -6,8 +6,17 @@ import { getPrices } from '@/lib/queries.ts'
 import { absoluteUrl, breadcrumbSchema, faqSchema } from '@/lib/seo.ts'
 import type { PriceRowV1 } from '@/lib/types.ts'
 
-/** See src/app/page.tsx — the build must not depend on the database. */
-export const dynamic = 'force-dynamic'
+/**
+ * Statically rendered and revalidated, not per request.
+ *
+ * These were forced dynamic to get deploys unblocked while the build hung on
+ * data-backed pages. That hang was the same deadlock that hung the runtime —
+ * concurrent reads on one database connection — and the build prerenders pages
+ * in parallel, which is what triggered it there. With reads now sequential the
+ * build succeeds, so the pages go back to being cached: without this every
+ * request paid for a database round trip and cold requests timed out.
+ */
+export const revalidate = 3600
 
 const TITLE = 'LLM Cost Calculator — Price Your Actual Workload'
 const DESCRIPTION =

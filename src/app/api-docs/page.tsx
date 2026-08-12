@@ -6,17 +6,16 @@ import { getLastUpdated, getPrices } from '@/lib/queries.ts'
 import { absoluteUrl, breadcrumbSchema, faqSchema, SITE } from '@/lib/seo.ts'
 
 /**
- * Rendered per request, not prerendered.
+ * Statically rendered and revalidated, not per request.
  *
- * Production builds were failing because this page reads pricing, and the
- * build environment cannot reach the database — every data-backed page hung
- * for 60 seconds and the export aborted, while the same queries answer in
- * under a second at runtime. Until that is understood (see scripts/db-probe.ts,
- * which reports connectivity in the build log), the build must not depend on
- * the database at all: a deploy that cannot ship is worse than a page that
- * renders on demand.
+ * These were forced dynamic to get deploys unblocked while the build hung on
+ * data-backed pages. That hang was the same deadlock that hung the runtime —
+ * concurrent reads on one database connection — and the build prerenders pages
+ * in parallel, which is what triggered it there. With reads now sequential the
+ * build succeeds, so the pages go back to being cached: without this every
+ * request paid for a database round trip and cold requests timed out.
  */
-export const dynamic = 'force-dynamic'
+export const revalidate = 3600
 
 const TITLE = 'Free LLM Pricing API — JSON, No Signup'
 const DESCRIPTION =

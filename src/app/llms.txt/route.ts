@@ -4,11 +4,16 @@ import { absoluteUrl, providerPath, SITE } from '@/lib/seo.ts'
 
 export const runtime = 'nodejs'
 /**
- * Generated per request rather than at build time — see src/app/page.tsx.
- * Reading the database during the build is what fails; serving it on demand
- * works, and the response is CDN-cached by its Cache-Control anyway.
+ * Statically rendered and revalidated, not per request.
+ *
+ * These were forced dynamic to get deploys unblocked while the build hung on
+ * data-backed pages. That hang was the same deadlock that hung the runtime —
+ * concurrent reads on one database connection — and the build prerenders pages
+ * in parallel, which is what triggered it there. With reads now sequential the
+ * build succeeds, so the pages go back to being cached: without this every
+ * request paid for a database round trip and cold requests timed out.
  */
-export const dynamic = 'force-dynamic'
+export const revalidate = 3600
 
 /**
  * /llms.txt — the index an LLM reads to find its way around the site.

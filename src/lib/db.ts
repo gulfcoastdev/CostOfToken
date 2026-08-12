@@ -18,22 +18,22 @@ function createClient(): postgres.Sql {
   return postgres(env.databaseUrl, {
     prepare: false,
     /**
-     * One connection per process.
+     * Pool size matters more than it looks.
      *
-     * This is the fix for a failure that looked like several different bugs: a
-     * build where every data-backed page hung past 60 seconds, and a runtime
-     * where each successive request to a database-reading page took longer
-     * than the last until it timed out — 1.4s, then 7s, then 16s, then nothing.
-     *
-     * Both are the same thing. Supabase's pooler allows a limited number of
-     * connections; a serverless instance handles one request at a time, so any
-     * pool larger than one just multiplies that instance's claim on the
-     * allowance by the number of instances. Once the allowance is gone, new
-     * connections wait rather than fail, which reads as a hang.
+     * This was set to 1 on the theory that a serverless instance handles one
+     * request at a time, so a bigger pool only multiplies the claim on
+     * Supabase's allowance. That reasoning was wrong twice over: the database
+     * was never near its limit (12 of 60 connections in use while pages were
+     * timing out), and a single connection serialises every concurrent render.
+     * `next build` renders many pages at once and Next serves concurrent
+     * requests from one instance, so with one connection the queue never
+     * drained — queries completed, then later ones waited past the 60 second
+     * page timeout and the build failed.
      */
-    max: 1,
-    // Release the slot back to the pooler promptly between invocations.
-    idle_timeout: 10,
+    max: 10,
+    // Never close idle connections. Reconnecting mid-build was part of the
+    // same stall; the pooler reclaims genuinely dead sockets on its own.
+    idle_timeout: 0,
     connect_timeout: 8,
     // numeric(12,6) arrives as a string by default to avoid float precision
     // loss. Prices are small enough that a JS number is exact here, and the
