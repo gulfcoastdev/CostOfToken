@@ -133,6 +133,39 @@ worth doing when the surface it protects starts changing often.
 
 ---
 
+## Operational hardening
+
+- [ ] **Turn on Attack Challenge Mode** — Vercel → Project → Firewall.
+      Available on Hobby, free, one toggle. It stops distributed abuse *at the
+      edge*, before a request ever reaches a function — the layer application
+      code cannot provide. The per-IP limit in the app is trivially sidestepped
+      by a proxy pool or an IPv6 range, and the site-wide ceiling only bounds
+      the damage after the fact; this prevents the traffic arriving.
+      *Not a code change — it needs someone in the dashboard.*
+
+      Context: on a free plan the risk is not a bill. Neither Vercel Hobby nor
+      Supabase's free tier can charge. Exceeding fair use gets the project
+      **paused**, so the failure mode is the site going dark without warning.
+
+- [ ] **Reconsider the limiter failing open**
+      If the counter query errors, every request passes unlimited. That is
+      deliberate — a limiter that 500s takes the API down with it — but it
+      removes protection exactly when the database is already struggling.
+      A short in-memory fallback count per instance would narrow the window.
+
+- [ ] **Sliding window instead of fixed**
+      Windows align to the hour, so 60 requests at 10:59:59 plus 60 at
+      11:00:00 is 120 in two seconds and entirely within the rules. Acceptable
+      for a backstop; worth fixing if real abuse ever appears.
+
+- [ ] **Rate limit or cache-protect the pages, not just the API**
+      Only the four `/api/v1/*` routes are gated. Pages rely entirely on CDN
+      caching — which is effective, but once an entry expires a crawler
+      sweeping 216 model pages goes straight to the database. That is close to
+      what took the site down during development.
+
+---
+
 ## Ongoing rules
 
 1. **Only build dedicated pages for models and comparisons with real search or
