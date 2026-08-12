@@ -41,6 +41,38 @@ Working roadmap. Ordered by priority, not by effort.
       (`?modality=`). What is missing is modality filtering on provider pages
       and any landing page for a modality.
 
+- [ ] **Mobile overhaul — the site is desktop-first and phones show it**
+      A nine-column table forced sideways into a 390px viewport. The fix is a
+      different presentation, not a narrower table.
+
+      *In priority order:*
+
+      1. **Cards instead of a wide table.** The main list and Popular models
+         become cards on mobile: name, provider with its colour dot, input /
+         output / blended each labelled, context window, star, and badges
+         (Free, Best value, Flagship, Via OpenRouter, modality). No horizontal
+         scrolling, no truncated columns.
+      2. **Input and output prices always visible.** Output is currently off
+         the right edge on a phone, and Popular models drops it entirely —
+         which makes the panel useless for the comparison it exists to serve.
+      3. **Modality and sort filters.** Modality moves from a `<select>` to
+         prominent pills; sort stays reachable while scrolling. Provider pills
+         collapse behind a disclosure — ten of them wrap to three rows and eat
+         the viewport.
+      4. **Cards | Table toggle**, so the dense view is still available.
+         Default follows the breakpoint. In table view keep the Model column
+         frozen and scroll only the prices.
+      5. **Spacing and touch targets.** The star and filter chips are below
+         the 44px comfortable minimum. Averages sit side by side rather than
+         stacked, and "What that buys you" collapses.
+
+      *Also:* make Calculator visually distinct in the nav — it is the highest
+      value page and reads as just another link. The nav wraps under the logo
+      on narrow screens; it should scroll horizontally instead.
+
+      *Notes:* the card and table views must share one source of ranking and
+      badge logic. Two code paths computing "Best value" is how they drift.
+
 ---
 
 ## Priority 2 — SEO & useful pages

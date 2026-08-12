@@ -12,11 +12,16 @@ import {
 import type { PriceRowV1 } from '@/lib/types.ts'
 import { DEFAULT_FEATURED_MODEL_IDS, MAX_FEATURED } from '../../data/featured.ts'
 import { FeaturedModels } from './featured-models.tsx'
+import { ModelCard, ModelDetails, StarButton } from './model-card.tsx'
 import { providerColor, SOURCE_LABELS } from './provider-colors.ts'
-import { Sparkline, TrendChart } from './sparkline.tsx'
+import { TrendChart } from './sparkline.tsx'
 
 export interface ExplorerRow extends PriceRowV1 {
-  trend: { series: number[]; lastChangedAt: string | null; changeCount: number } | null
+  trend: {
+    series: number[]
+    lastChangedAt: string | null
+    changeCount: number
+  } | null
 }
 
 export interface ProviderOption {
@@ -34,6 +39,21 @@ export interface ExplorerProps {
 
 /** localStorage key for the user's pinned models. Versioned so the shape can change. */
 const PINS_STORAGE_KEY = 'costoftoken.pins.v1'
+/** Remembers an explicit Cards/Table choice, so power users keep the dense view. */
+const VIEW_STORAGE_KEY = 'costoftoken.view.v1'
+
+/**
+ * How the model list is presented.
+ *
+ * `auto` is the default and is resolved by CSS at the `sm` breakpoint rather
+ * than by JavaScript: cards below it, table above. Deciding in JS would need
+ * the viewport width during render, which the server does not have, so the
+ * first paint would be wrong and then flip.
+ */
+type ViewMode = 'auto' | 'cards' | 'table'
+
+/** Cards rendered before "Show more". 216 at once is a long scroll and a lot of DOM. */
+const CARD_PAGE = 40
 
 export interface InitialFilters {
   providers: string[]
@@ -110,7 +130,10 @@ function readUrlFilters(providerSlugs: string[]): InitialFilters {
     pins:
       rawPins === null
         ? null
-        : rawPins.split(',').map((v) => v.trim()).filter(Boolean),
+        : rawPins
+            .split(',')
+            .map((v) => v.trim())
+            .filter(Boolean),
   }
 }
 
@@ -127,6 +150,11 @@ export function PriceExplorer({ rows, providers, updatedAt, providerSlugs }: Exp
   const [urlApplied, setUrlApplied] = useState(false)
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
+  const [view, setView] = useState<ViewMode>('auto')
+  const [cardLimit, setCardLimit] = useState(CARD_PAGE)
+  // Below `sm` the filter panel collapses behind a button: expanded, ten
+  // provider pills plus six controls take more than half a phone screen.
+  const [filtersOpen, setFiltersOpen] = useState(false)
 
   // `null` means "no explicit choice yet", which renders the curated default.
   // A URL parameter wins over stored preferences so a shared link shows the
@@ -167,6 +195,27 @@ export function PriceExplorer({ rows, providers, updatedAt, providerSlugs }: Exp
     // Runs once the URL has been read; pins from the URL win.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [urlApplied])
+
+  // Same reasoning as pins: storage is read after mount so the server and
+  // client agree on the first render. `auto` until then, which is the default
+  // anyway, so there is nothing to flash.
+  useEffect(() => {
+    try {
+      const stored = window.localStorage.getItem(VIEW_STORAGE_KEY)
+      if (stored === 'cards' || stored === 'table') setView(stored)
+    } catch {
+      // Private mode: the default is fine.
+    }
+  }, [])
+
+  const chooseView = useCallback((next: ViewMode) => {
+    setView(next)
+    try {
+      window.localStorage.setItem(VIEW_STORAGE_KEY, next)
+    } catch {
+      // Non-fatal: the choice still applies for this session.
+    }
+  }, [])
 
   const isCustomPins = pins !== null
   const effectivePins = pins ?? [...DEFAULT_FEATURED_MODEL_IDS]
@@ -258,7 +307,7 @@ export function PriceExplorer({ rows, providers, updatedAt, providerSlugs }: Exp
 
   const sorted = useMemo(() => {
     const list = [...scored]
-    const byBlended = (a: typeof list[number], b: typeof list[number]) =>
+    const byBlended = (a: (typeof list)[number], b: (typeof list)[number]) =>
       (a.blended ?? Number.POSITIVE_INFINITY) - (b.blended ?? Number.POSITIVE_INFINITY)
 
     switch (sort) {
@@ -381,7 +430,33 @@ export function PriceExplorer({ rows, providers, updatedAt, providerSlugs }: Exp
   }
 
   const hasFilters =
-    selectedProviders.length > 0 || flagshipOnly || under1 || million || modality !== '' || search !== ''
+    selectedProviders.length > 0 ||
+    flagshipOnly ||
+    under1 ||
+    million ||
+    modality !== '' ||
+    search !== ''
+
+  // Shown on the collapsed Filters button, so a filter left on is never
+  // invisible. Providers count as one regardless of how many are selected.
+  const activeFilterCount =
+    (selectedProviders.length > 0 ? 1 : 0) +
+    (flagshipOnly ? 1 : 0) +
+    (under1 ? 1 : 0) +
+    (million ? 1 : 0) +
+    (modality !== '' ? 1 : 0) +
+    (search !== '' ? 1 : 0)
+
+  const toggleExpanded = useCallback(
+    (id: string) => setExpandedId((current) => (current === id ? null : id)),
+    [],
+  )
+
+  // A new result set starts from the top again, otherwise a filter that leaves
+  // 12 models still claims to be showing the first 40 of them.
+  useEffect(() => {
+    setCardLimit(CARD_PAGE)
+  }, [sorted])
 
   return (
     <div className="mx-auto max-w-[1120px] px-5 pb-14 pt-7">
@@ -408,99 +483,47 @@ export function PriceExplorer({ rows, providers, updatedAt, providerSlugs }: Exp
       <FunStatsCard avgInput={stats.avgInput} />
 
       {/*
-        Not sticky on small screens. Wrapped across five rows it takes roughly
-        half a phone viewport, so pinning it leaves almost nothing for the table
-        it is meant to filter — and it overlapped the rows.
+        Sticky at every width, but only the compact bar is sticky on a phone —
+        the full panel is behind the Filters button. Expanded it is more than
+        half a viewport, which is why it could not be pinned before.
 
         z-40 keeps it above the table's own sticky header, which uses z-30 for
         the pinned columns. At z-20 the two tied and DOM order decided, so the
         header painted over the toolbar.
       */}
-      <div className="relative z-40 mb-4 rounded-xl border border-neutral-200 bg-white p-4 shadow-sm sm:sticky sm:top-0">
-        <div className="flex flex-wrap gap-2">
-          {providers.map((provider) => {
-            const active = selectedProviders.includes(provider.slug)
-            return (
-              <button
-                key={provider.slug}
-                type="button"
-                onClick={() => toggleProvider(provider.slug)}
-                aria-pressed={active}
-                className={chipClass(active)}
-              >
-                <span
-                  className="inline-block h-[7px] w-[7px] shrink-0 rounded-full"
-                  style={{ background: providerColor(provider.slug) }}
-                />
-                {provider.name}
-              </button>
-            )
-          })}
-        </div>
-
-        <div className="mt-2.5 flex flex-wrap items-center gap-2">
-          <label className="sr-only" htmlFor="model-search">
-            Search models
-          </label>
-          <input
-            id="model-search"
-            type="search"
-            placeholder="Search models…"
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            className="min-w-[160px] flex-1 rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-900 outline-none placeholder:text-neutral-400 focus-visible:ring-2 focus-visible:ring-emerald-600"
-          />
-
+      <div className="sticky top-0 z-40 -mx-5 mb-4 border-y border-neutral-200 bg-white px-5 py-2.5 shadow-sm sm:mx-0 sm:rounded-xl sm:border sm:p-4">
+        {/* Compact bar — phones only. Sort stays reachable without expanding. */}
+        <div className="flex items-center gap-2 sm:hidden">
           <button
             type="button"
-            onClick={() => setFlagshipOnly((v) => !v)}
-            aria-pressed={flagshipOnly}
-            className={chipClass(flagshipOnly)}
+            onClick={() => setFiltersOpen((open) => !open)}
+            aria-expanded={filtersOpen}
+            aria-controls="filter-panel"
+            className={`inline-flex min-h-[44px] flex-1 items-center justify-center gap-1.5 rounded-lg border px-3 text-sm font-semibold ${
+              hasFilters
+                ? 'border-emerald-600 bg-emerald-50 text-emerald-700'
+                : 'border-neutral-200 bg-white text-neutral-700'
+            }`}
           >
-            Flagship only
-          </button>
-          <button
-            type="button"
-            onClick={() => setUnder1((v) => !v)}
-            aria-pressed={under1}
-            className={chipClass(under1)}
-          >
-            Under $1 input
-          </button>
-          <button
-            type="button"
-            onClick={() => setMillion((v) => !v)}
-            aria-pressed={million}
-            className={chipClass(million)}
-          >
-            1M+ context
+            Filters
+            {activeFilterCount > 0 && (
+              <span className="inline-flex h-5 min-w-[20px] items-center justify-center rounded-full bg-emerald-600 px-1 text-[11px] font-bold text-white">
+                {activeFilterCount}
+              </span>
+            )}
+            <span aria-hidden className="text-neutral-400">
+              {filtersOpen ? '▲' : '▼'}
+            </span>
           </button>
 
-          <label className="sr-only" htmlFor="modality-filter">
-            Filter by modality
-          </label>
-          <select
-            id="modality-filter"
-            value={modality}
-            onChange={(event) => setModality(event.target.value)}
-            className="cursor-pointer rounded-lg border border-neutral-200 bg-white px-2.5 py-2 text-sm text-neutral-900"
-          >
-            <option value="">Any modality</option>
-            {MODALITIES.map((option) => (
-              <option key={option} value={option}>
-                {option[0].toUpperCase() + option.slice(1)}
-              </option>
-            ))}
-          </select>
-
-          <label className="sr-only" htmlFor="sort-order">
+          <label className="sr-only" htmlFor="sort-order-mobile">
             Sort order
           </label>
           <select
-            id="sort-order"
+            id="sort-order-mobile"
             value={sort}
             onChange={(event) => setSort(event.target.value as SortKey)}
-            className="cursor-pointer rounded-lg border border-neutral-200 bg-white px-2.5 py-2 text-sm text-neutral-900"
+            className="min-h-[44px] flex-1 cursor-pointer rounded-lg border border-neutral-200 bg-white px-2.5 text-sm text-neutral-900"
           >
             {SORT_LABELS.map((option) => (
               <option key={option.value} value={option.value}>
@@ -508,27 +531,134 @@ export function PriceExplorer({ rows, providers, updatedAt, providerSlugs }: Exp
               </option>
             ))}
           </select>
+        </div>
 
-          <button
-            type="button"
-            onClick={copyLink}
-            className="whitespace-nowrap rounded-lg bg-emerald-600 px-3.5 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
-          >
-            {copied ? 'Copied!' : 'Copy link'}
-          </button>
-          <button
-            type="button"
-            onClick={shareLink}
-            className="whitespace-nowrap rounded-lg border border-emerald-600 bg-white px-3.5 py-2 text-sm font-semibold text-emerald-700 hover:bg-emerald-50"
-          >
-            Share
-          </button>
+        {/*
+          One panel, two behaviours: always open from `sm` up, toggled below it.
+          Rendering it twice would mean two sets of inputs bound to the same
+          state, and duplicate ids.
+        */}
+        <div
+          id="filter-panel"
+          className={`${
+            filtersOpen ? 'mt-3 max-h-[60vh] overflow-y-auto overscroll-contain' : 'hidden'
+          } sm:mt-0 sm:block sm:max-h-none sm:overflow-visible`}
+        >
+          <ProviderFilter
+            providers={providers}
+            selected={selectedProviders}
+            onToggle={toggleProvider}
+            onClear={() => setSelectedProviders([])}
+          />
+
+          <div className="mt-2.5 flex flex-wrap items-center gap-2">
+            <label className="sr-only" htmlFor="model-search">
+              Search models
+            </label>
+            <input
+              id="model-search"
+              type="search"
+              placeholder="Search models…"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              className="min-h-[44px] w-full min-w-[160px] rounded-lg border border-neutral-200 bg-white px-3 text-sm text-neutral-900 outline-none placeholder:text-neutral-400 focus-visible:ring-2 focus-visible:ring-emerald-600 sm:min-h-0 sm:w-auto sm:flex-1 sm:py-2"
+            />
+
+            <button
+              type="button"
+              onClick={() => setFlagshipOnly((v) => !v)}
+              aria-pressed={flagshipOnly}
+              className={chipClass(flagshipOnly)}
+            >
+              Flagship only
+            </button>
+            <button
+              type="button"
+              onClick={() => setUnder1((v) => !v)}
+              aria-pressed={under1}
+              className={chipClass(under1)}
+            >
+              Under $1 input
+            </button>
+            <button
+              type="button"
+              onClick={() => setMillion((v) => !v)}
+              aria-pressed={million}
+              className={chipClass(million)}
+            >
+              1M+ context
+            </button>
+
+            <label className="sr-only" htmlFor="sort-order">
+              Sort order
+            </label>
+            {/* Hidden on phones: the compact bar above already carries sort. */}
+            <select
+              id="sort-order"
+              value={sort}
+              onChange={(event) => setSort(event.target.value as SortKey)}
+              className="hidden cursor-pointer rounded-lg border border-neutral-200 bg-white px-2.5 py-2 text-sm text-neutral-900 sm:block"
+            >
+              {SORT_LABELS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+
+            <button
+              type="button"
+              onClick={copyLink}
+              className="min-h-[44px] flex-1 whitespace-nowrap rounded-lg bg-emerald-600 px-3.5 text-sm font-semibold text-white hover:bg-emerald-700 sm:min-h-0 sm:flex-none sm:py-2"
+            >
+              {copied ? 'Copied!' : 'Copy link'}
+            </button>
+            <button
+              type="button"
+              onClick={shareLink}
+              className="min-h-[44px] flex-1 whitespace-nowrap rounded-lg border border-emerald-600 bg-white px-3.5 text-sm font-semibold text-emerald-700 hover:bg-emerald-50 sm:min-h-0 sm:flex-none sm:py-2"
+            >
+              Share
+            </button>
+          </div>
+
+          {/*
+            Modality is a row of pills rather than a select. It was the least
+            discoverable control on the page while being one of the few that
+            genuinely narrows 216 models to a useful set.
+          */}
+          <fieldset className="mt-2.5 border-0 p-0">
+            <legend className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-neutral-400">
+              Modality
+            </legend>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => setModality('')}
+                aria-pressed={modality === ''}
+                className={chipClass(modality === '')}
+              >
+                Any
+              </button>
+              {MODALITIES.map((option) => (
+                <button
+                  key={option}
+                  type="button"
+                  onClick={() => setModality(modality === option ? '' : option)}
+                  aria-pressed={modality === option}
+                  className={chipClass(modality === option)}
+                >
+                  {option[0].toUpperCase() + option.slice(1)}
+                </button>
+              ))}
+            </div>
+          </fieldset>
         </div>
       </div>
 
-      <div className="mb-2 flex flex-wrap items-center gap-3">
+      <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-2">
         <p className="text-[13px] text-neutral-600">
-          Showing {sorted.length} of {rows.length} models · select a row for details
+          Showing {sorted.length} of {rows.length} models · select one for details
         </p>
         {hasFilters && (
           <button
@@ -539,17 +669,42 @@ export function PriceExplorer({ rows, providers, updatedAt, providerSlugs }: Exp
             Clear filters
           </button>
         )}
+        <ViewToggle view={view} onChange={chooseView} />
       </div>
 
-      <PriceTable
-        entries={sorted}
-        pinnedSet={pinnedSet}
-        onTogglePin={togglePin}
-        bestValueIds={bestValueIds}
-        topValueId={topValueId}
-        expandedId={expandedId}
-        onToggle={(id) => setExpandedId((current) => (current === id ? null : id))}
-      />
+      {sorted.length === 0 ? (
+        <div className="rounded-xl border border-neutral-200 bg-white p-10 text-center">
+          <p className="text-sm text-neutral-600">No models match these filters.</p>
+        </div>
+      ) : (
+        <>
+          <div className={view === 'table' ? 'hidden' : view === 'auto' ? 'sm:hidden' : ''}>
+            <CardList
+              entries={sorted}
+              limit={cardLimit}
+              onShowMore={() => setCardLimit((current) => current + CARD_PAGE)}
+              pinnedSet={pinnedSet}
+              onTogglePin={togglePin}
+              bestValueIds={bestValueIds}
+              topValueId={topValueId}
+              expandedId={expandedId}
+              onToggle={toggleExpanded}
+            />
+          </div>
+
+          <div className={view === 'cards' ? 'hidden' : view === 'auto' ? 'hidden sm:block' : ''}>
+            <PriceTable
+              entries={sorted}
+              pinnedSet={pinnedSet}
+              onTogglePin={togglePin}
+              bestValueIds={bestValueIds}
+              topValueId={topValueId}
+              expandedId={expandedId}
+              onToggle={toggleExpanded}
+            />
+          </div>
+        </>
+      )}
 
       <Footer />
     </div>
@@ -559,11 +714,187 @@ export function PriceExplorer({ rows, providers, updatedAt, providerSlugs }: Exp
 // ---------------------------------------------------------------------------
 
 function chipClass(active: boolean): string {
+  // min-h-9 on touch, tighter from `sm` up where pointing is precise.
   const base =
-    'inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border px-3 py-1.5 text-[13px] font-medium transition-colors cursor-pointer'
+    'inline-flex min-h-9 items-center gap-1.5 whitespace-nowrap rounded-full border px-3 py-1.5 text-[13px] font-medium transition-colors cursor-pointer sm:min-h-0'
   return active
     ? `${base} border-emerald-600 bg-emerald-50 text-emerald-700`
     : `${base} border-neutral-200 bg-white text-neutral-700 hover:border-neutral-300`
+}
+
+/**
+ * Provider pills, collapsed by default on phones.
+ *
+ * Ten pills wrap to three rows, which is most of what the collapsed filter bar
+ * was meant to save. Any active selection forces it open — a hidden filter that
+ * is silently narrowing the list is worse than the space it costs.
+ */
+function ProviderFilter({
+  providers,
+  selected,
+  onToggle,
+  onClear,
+}: {
+  providers: ProviderOption[]
+  selected: string[]
+  onToggle: (slug: string) => void
+  onClear: () => void
+}) {
+  const [open, setOpen] = useState(false)
+  const expanded = open || selected.length > 0
+
+  return (
+    <div>
+      <div className="mb-1.5 flex items-center justify-between gap-2 sm:hidden">
+        <button
+          type="button"
+          onClick={() => setOpen((value) => !value)}
+          aria-expanded={expanded}
+          className="text-[11px] font-semibold uppercase tracking-wide text-neutral-400"
+        >
+          Providers{selected.length > 0 ? ` · ${selected.length} selected` : ''}{' '}
+          <span aria-hidden>{expanded ? '▲' : '▼'}</span>
+        </button>
+        {selected.length > 0 && (
+          <button
+            type="button"
+            onClick={onClear}
+            className="text-[12px] font-medium text-emerald-700 underline underline-offset-2"
+          >
+            All providers
+          </button>
+        )}
+      </div>
+
+      <div className={`${expanded ? 'flex' : 'hidden'} flex-wrap gap-2 sm:flex`}>
+        {providers.map((provider) => {
+          const active = selected.includes(provider.slug)
+          return (
+            <button
+              key={provider.slug}
+              type="button"
+              onClick={() => onToggle(provider.slug)}
+              aria-pressed={active}
+              className={chipClass(active)}
+            >
+              <span
+                className="inline-block h-[7px] w-[7px] shrink-0 rounded-full"
+                style={{ background: providerColor(provider.slug) }}
+              />
+              {provider.name}
+            </button>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+/**
+ * Cards or table.
+ *
+ * In `auto` there is no single correct highlight — the answer depends on the
+ * viewport, which is not known during render. Rather than guess and flip after
+ * hydration, the active styling is applied by breakpoint variant, so it matches
+ * whichever view CSS is actually showing.
+ */
+function ViewToggle({ view, onChange }: { view: ViewMode; onChange: (next: ViewMode) => void }) {
+  const base =
+    'min-h-9 rounded-md px-3 text-[13px] font-medium transition-colors cursor-pointer sm:min-h-0 sm:py-1'
+  const on = 'bg-white text-neutral-900 shadow-sm'
+  const off = 'text-neutral-500 hover:text-neutral-800'
+
+  return (
+    <div
+      role="group"
+      aria-label="List view"
+      className="ml-auto inline-flex rounded-lg bg-neutral-100 p-0.5"
+    >
+      <button
+        type="button"
+        onClick={() => onChange('cards')}
+        aria-pressed={view === 'cards'}
+        className={`${base} ${
+          view === 'cards'
+            ? on
+            : view === 'auto'
+              ? `${off} max-sm:bg-white max-sm:text-neutral-900 max-sm:shadow-sm`
+              : off
+        }`}
+      >
+        Cards
+      </button>
+      <button
+        type="button"
+        onClick={() => onChange('table')}
+        aria-pressed={view === 'table'}
+        className={`${base} ${
+          view === 'table'
+            ? on
+            : view === 'auto'
+              ? `${off} sm:bg-white sm:text-neutral-900 sm:shadow-sm`
+              : off
+        }`}
+      >
+        Table
+      </button>
+    </div>
+  )
+}
+
+function CardList({
+  entries,
+  limit,
+  onShowMore,
+  pinnedSet,
+  onTogglePin,
+  bestValueIds,
+  topValueId,
+  expandedId,
+  onToggle,
+}: {
+  entries: Entry[]
+  limit: number
+  onShowMore: () => void
+  pinnedSet: Set<string>
+  onTogglePin: (id: string) => void
+  bestValueIds: Set<string>
+  topValueId: string | null
+  expandedId: string | null
+  onToggle: (id: string) => void
+}) {
+  const visible = entries.slice(0, limit)
+  const remaining = entries.length - visible.length
+
+  return (
+    <>
+      <ul className="flex flex-col gap-2 p-0">
+        {visible.map((entry, index) => (
+          <ModelCard
+            key={`${entry.row.provider}/${entry.row.model_id}`}
+            entry={entry}
+            rank={index + 1}
+            pinned={pinnedSet.has(entry.row.model_id)}
+            onTogglePin={onTogglePin}
+            isBest={bestValueIds.has(entry.row.model_id)}
+            isTop={entry.row.model_id === topValueId}
+            expanded={expandedId === entry.row.model_id}
+            onToggle={onToggle}
+          />
+        ))}
+      </ul>
+
+      {remaining > 0 && (
+        <button
+          type="button"
+          onClick={onShowMore}
+          className="mt-3 min-h-[44px] w-full rounded-xl border border-neutral-200 bg-white text-sm font-semibold text-neutral-700 hover:border-neutral-300"
+        >
+          Show {Math.min(remaining, CARD_PAGE)} more · {remaining} left
+        </button>
+      )}
+    </>
+  )
 }
 
 function Header({ updatedAt }: { updatedAt: string | null }) {
@@ -587,15 +918,23 @@ function StatsCard({
   stats,
   count,
 }: {
-  stats: { avgInput: number | null; avgOutput: number | null; avgBlended: number | null }
+  stats: {
+    avgInput: number | null
+    avgOutput: number | null
+    avgBlended: number | null
+  }
   count: number
 }) {
   return (
-    <section className="min-w-[240px] flex-1 rounded-2xl border border-neutral-200 bg-white px-6 py-5">
-      <h2 className="m-0 mb-3.5 text-xs font-semibold uppercase tracking-wide text-neutral-500">
+    <section className="min-w-[240px] flex-1 rounded-2xl border border-neutral-200 bg-white px-4 py-4 sm:px-6 sm:py-5">
+      <h2 className="m-0 mb-3 text-xs font-semibold uppercase tracking-wide text-neutral-500 sm:mb-3.5">
         Average across {count} selected model{count === 1 ? '' : 's'}
       </h2>
-      <div className="flex flex-wrap gap-7">
+      {/*
+        Three across on a phone rather than stacked. Stacked, the three numbers
+        alone were most of a viewport before any model appeared.
+      */}
+      <div className="grid grid-cols-3 gap-2 sm:flex sm:flex-wrap sm:gap-7">
         <Stat label="Avg input /1M" value={formatPrice(stats.avgInput)} />
         <Stat label="Avg output /1M" value={formatPrice(stats.avgOutput)} />
         <Stat label="Avg blended /1M" value={formatPrice(stats.avgBlended)} accent />
@@ -606,15 +945,15 @@ function StatsCard({
 
 function Stat({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
   return (
-    <div>
+    <div className="min-w-0">
       <div
-        className={`text-[34px] font-bold tabular-nums leading-none tracking-tight ${
+        className={`text-[22px] font-bold tabular-nums leading-none tracking-tight sm:text-[34px] ${
           accent ? 'text-emerald-600' : 'text-neutral-900'
         }`}
       >
         {value}
       </div>
-      <div className="mt-1.5 text-[12.5px] text-neutral-400">{label}</div>
+      <div className="mt-1.5 text-[11px] text-neutral-400 sm:text-[12.5px]">{label}</div>
     </div>
   )
 }
@@ -646,26 +985,53 @@ function TrendCard({ series, pct }: { series: number[]; pct: number }) {
   )
 }
 
+/**
+ * Collapsible on phones, always open from `sm` up.
+ *
+ * Not a `<details>`: a closed one hides its content through the UA stylesheet,
+ * which a media query cannot reliably override, so it would stay collapsed on
+ * desktop too. An explicit `hidden sm:block` says exactly what is meant.
+ */
 function FunStatsCard({ avgInput }: { avgInput: number | null }) {
+  const [open, setOpen] = useState(false)
+  const title = 'What that buys you, at today’s avg input price'
+
   return (
-    <section className="mb-4 rounded-2xl border border-neutral-200 bg-white px-6 py-[18px]">
-      <h2 className="m-0 mb-3.5 text-xs font-semibold uppercase tracking-wide text-neutral-500">
-        What that buys you, at today&apos;s avg input price
+    <section className="mb-4 rounded-2xl border border-neutral-200 bg-white px-4 py-3 sm:px-6 sm:py-[18px]">
+      <h2 className="m-0 hidden text-xs font-semibold uppercase tracking-wide text-neutral-500 sm:mb-3.5 sm:block">
+        {title}
       </h2>
-      <div className="grid grid-cols-[repeat(auto-fit,minmax(190px,1fr))] gap-4">
-        {FUN_ITEMS.map((item) => (
-          <div key={item.label}>
-            <div className="text-[26px] font-bold tabular-nums tracking-tight text-emerald-600">
-              {avgInput === null ? '—' : formatCost((item.tokens / 1_000_000) * avgInput)}
+      <button
+        type="button"
+        onClick={() => setOpen((value) => !value)}
+        aria-expanded={open}
+        aria-controls="fun-stats"
+        className="flex min-h-9 w-full items-center justify-between gap-2 text-left text-xs font-semibold uppercase tracking-wide text-neutral-500 sm:hidden"
+      >
+        {title}
+        <span aria-hidden className="text-neutral-400">
+          {open ? '▲' : '▼'}
+        </span>
+      </button>
+
+      <div id="fun-stats" className={`${open ? 'mt-3 block' : 'hidden'} sm:mt-0 sm:block`}>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-[repeat(auto-fit,minmax(190px,1fr))] sm:gap-4">
+          {FUN_ITEMS.map((item) => (
+            <div key={item.label}>
+              <div className="text-[20px] font-bold tabular-nums tracking-tight text-emerald-600 sm:text-[26px]">
+                {avgInput === null ? '—' : formatCost((item.tokens / 1_000_000) * avgInput)}
+              </div>
+              <div className="mt-1 text-[13px] text-neutral-700 sm:text-[13.5px]">{item.label}</div>
+              <div className="mt-px text-xs text-neutral-400">
+                ≈{formatCompact(item.tokens)} tokens
+              </div>
             </div>
-            <div className="mt-1 text-[13.5px] text-neutral-700">{item.label}</div>
-            <div className="mt-px text-xs text-neutral-400">≈{formatCompact(item.tokens)} tokens</div>
-          </div>
-        ))}
+          ))}
+        </div>
+        <p className="mt-3 text-[11.5px] text-neutral-400">
+          Token counts are rough estimates for illustration, not measured figures.
+        </p>
       </div>
-      <p className="mt-3 text-[11.5px] text-neutral-400">
-        Token counts are rough estimates for illustration, not measured figures.
-      </p>
     </section>
   )
 }
@@ -693,14 +1059,6 @@ function PriceTable({
   expandedId: string | null
   onToggle: (id: string) => void
 }) {
-  if (entries.length === 0) {
-    return (
-      <div className="rounded-xl border border-neutral-200 bg-white p-10 text-center">
-        <p className="text-sm text-neutral-600">No models match these filters.</p>
-      </div>
-    )
-  }
-
   /*
    * The wrapper scrolls in both axes and bounds its own height.
    *
@@ -717,9 +1075,7 @@ function PriceTable({
   return (
     <div className="max-h-[70vh] overflow-auto overscroll-contain rounded-xl border border-neutral-200 bg-white">
       <table className="w-full min-w-[900px] border-collapse text-sm">
-        <caption className="sr-only">
-          LLM API pricing by model, in USD per million tokens
-        </caption>
+        <caption className="sr-only">LLM API pricing by model, in USD per million tokens</caption>
         <thead>
           <tr>
             {/* Rank and Model are pinned as a pair. Widths are fixed here so
@@ -804,14 +1160,6 @@ function PriceRow({
   const cellStyle = { background }
   const detailId = `detail-${row.provider}-${row.model_id}`
 
-  const trend = row.trend
-  const pctChange =
-    trend && trend.series.length >= 2 && trend.series[0] > 0
-      ? ((trend.series[trend.series.length - 1] - trend.series[0]) / trend.series[0]) * 100
-      : 0
-  const sparklineColor =
-    pctChange < -0.5 ? '#059669' : pctChange > 0.5 ? '#DC2626' : '#A3A3A3'
-
   return (
     <>
       <tr
@@ -819,7 +1167,10 @@ function PriceRow({
         className="cursor-pointer border-b border-neutral-100 hover:bg-neutral-50"
         onClick={() => onToggle(row.model_id)}
       >
-        <td style={cellStyle} className="sticky left-0 z-10 px-3 py-2.5 text-[13px] text-neutral-400">
+        <td
+          style={cellStyle}
+          className="sticky left-0 z-10 px-3 py-2.5 text-[13px] text-neutral-400"
+        >
           {rank}
         </td>
         <td style={cellStyle} className="sticky left-11 z-10 px-3 py-2.5">
@@ -829,25 +1180,12 @@ function PriceRow({
             its own and doubled the row height on narrow screens.
           */}
           <div className="flex items-start gap-1.5">
-            <button
-              type="button"
-              onClick={(event) => {
-                event.stopPropagation()
-                onTogglePin(row.model_id)
-              }}
-              aria-pressed={pinned}
-              aria-label={
-                pinned
-                  ? `Remove ${row.display_name} from popular models`
-                  : `Add ${row.display_name} to popular models`
-              }
-              title={pinned ? 'Remove from Popular models' : 'Add to Popular models'}
-              className={`mt-0.5 shrink-0 rounded text-base leading-none focus-visible:outline-2 focus-visible:outline-emerald-600 ${
-                pinned ? 'text-amber-500' : 'text-neutral-300 hover:text-neutral-500'
-              }`}
-            >
-              {pinned ? '★' : '☆'}
-            </button>
+            <StarButton
+              pinned={pinned}
+              displayName={row.display_name}
+              onToggle={() => onTogglePin(row.model_id)}
+              className="-mt-0.5"
+            />
             {/* The row is clickable for mouse users, but the toggle is a real
                 button so it's reachable and announced for keyboard users. */}
             <button
@@ -906,102 +1244,13 @@ function PriceRow({
 
       {expanded && (
         <tr id={detailId}>
-          <td
-            colSpan={9}
-            className="border-b border-neutral-100 bg-neutral-50 px-4 pb-4 pt-3 text-[13px] text-neutral-600"
-          >
-            <div className="flex flex-wrap gap-x-8 gap-y-2">
-              <span>
-                <strong className="font-semibold text-neutral-800">Context:</strong>{' '}
-                {formatContext(row.context_window)}
-                {row.max_output_tokens
-                  ? ` · max output ${formatContext(row.max_output_tokens)}`
-                  : ''}
-              </span>
-              <span>
-                <strong className="font-semibold text-neutral-800">Source:</strong>{' '}
-                {row.source_url ? (
-                  <a
-                    href={row.source_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-emerald-700 underline underline-offset-2"
-                  >
-                    {SOURCE_LABELS[row.source_kind] ?? row.source_kind}
-                  </a>
-                ) : (
-                  (SOURCE_LABELS[row.source_kind] ?? row.source_kind)
-                )}
-              </span>
-              <span>
-                <strong className="font-semibold text-neutral-800">API id:</strong>{' '}
-                <code className="rounded bg-neutral-200 px-1 py-0.5 font-mono text-xs">
-                  {row.model_id}
-                </code>
-              </span>
-              <span>
-                <strong className="font-semibold text-neutral-800">Updated:</strong>{' '}
-                {formatRelativeTime(row.updated_at)}
-              </span>
-            </div>
-
-            {row.long_context_threshold !== null && row.long_input !== null && (
-              <p className="mt-2">
-                Over {formatContext(row.long_context_threshold)} tokens: input{' '}
-                {formatPrice(row.long_input)}, output {formatPrice(row.long_output)} per 1M.
-              </p>
-            )}
-
-            {row.tags.length > 0 && (
-              <div className="mt-2 flex flex-wrap gap-1.5">
-                {row.tags.map((tag) => (
-                  <span
-                    key={tag}
-                    className="rounded-full bg-neutral-200 px-2 py-0.5 text-[11px] text-neutral-700"
-                  >
-                    {tag}
-                  </span>
-                ))}
-              </div>
-            )}
-
-            <div className="mt-2.5 flex items-center gap-2.5">
-              {trend && trend.series.length >= 2 && (
-                <Sparkline series={trend.series} color={sparklineColor} />
-              )}
-              <span>{describeTrend(trend, pctChange)}</span>
-            </div>
+          <td colSpan={9} className="border-b border-neutral-100 bg-neutral-50 px-4 pb-4 pt-3">
+            <ModelDetails row={row} />
           </td>
         </tr>
       )}
     </>
   )
-}
-
-/**
- * Describe a model's price history in words.
- *
- * Net change and "did it move" are different questions: a price that rose and
- * fell back lands at 0% while having changed twice. Reporting that as
- * "up 0%" reads as a bug, so a round trip is called out as such.
- */
-function describeTrend(
-  trend: ExplorerRow['trend'],
-  pctChange: number,
-): string {
-  if (!trend || trend.changeCount === 0) {
-    return 'No price change recorded since tracking began.'
-  }
-
-  const lastChanged = formatRelativeTime(trend.lastChangedAt)
-
-  if (Math.abs(pctChange) < 0.5) {
-    const times = trend.changeCount === 1 ? 'once' : `${trend.changeCount} times`
-    return `Changed ${times} but net unchanged over 90 days · last changed ${lastChanged}.`
-  }
-
-  const direction = pctChange < 0 ? 'down' : 'up'
-  return `Input price ${direction} ${Math.abs(Math.round(pctChange))}% over 90 days · last changed ${lastChanged}.`
 }
 
 function Footer() {
