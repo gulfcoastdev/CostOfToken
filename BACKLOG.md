@@ -90,6 +90,49 @@ Working roadmap. Ordered by priority, not by effort.
 
 ---
 
+## Test coverage gaps
+
+The suite covers parsing, cost logic, database reads and API routes. Named here
+so the gaps are not mistaken for coverage. None of these are urgent; each is
+worth doing when the surface it protects starts changing often.
+
+- [ ] **Page render tests**
+      Nothing renders a page and asserts on the output. A broken table, a
+      missing price column or a page that throws during render would reach
+      production. Needs a running server or a React test renderer; Playwright
+      against `next start` would also cover the client behaviour that has no
+      tests at all — sorting, filtering, pinning, the calculator inputs.
+
+- [ ] **Write-path tests for the pipeline**
+      The upsert, the history trigger and anomaly detection are only ever
+      verified by hand against a live database. Their logic is covered
+      (`tests/anomaly.test.ts`), but nothing checks that a run actually writes
+      what it should, that unchanged prices add no history rows, or that a
+      blocked provider leaves existing prices untouched. Wants a disposable
+      database per run — the Docker container in the README is the obvious
+      fixture.
+
+- [ ] **Cron route tests**
+      Auth is verified by hand only. Worth covering: a wrong secret returns
+      401, a blocked provider returns 409, an all-failed run returns 502, and
+      cache invalidation fires only when something changed.
+
+- [ ] **Extractors against live vendor pages**
+      Extractors are tested against fixtures, deliberately: a vendor editing
+      their page should not turn CI red. The cost is that a layout change
+      surfaces in production first, caught by anomaly detection rather than by
+      a test. A scheduled job that runs the extractors against the real pages
+      and reports — separately from CI, and never blocking a deploy — would
+      close that gap without making the build depend on someone else's website.
+
+- [ ] **Fixture drift**
+      The HTML and markdown fixtures in the extractor tests are hand-written
+      approximations of vendor pages. If a vendor's real structure drifts far
+      enough, the tests keep passing against a shape that no longer exists.
+      Capturing periodic real snapshots would keep them honest.
+
+---
+
 ## Ongoing rules
 
 1. **Only build dedicated pages for models and comparisons with real search or
