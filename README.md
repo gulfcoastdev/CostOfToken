@@ -311,7 +311,11 @@ the site — the requirement travels in `meta.attribution` and an
 `X-Attribution-Required` header on every response, not just in the docs.
 
 Rate limited to 60 requests/hour per IP (configurable), with higher per-key
-limits via the `api_keys` table. Returns `429` with `Retry-After` and
+limits via the `api_keys` table, behind a site-wide ceiling of 20,000/hour
+across all callers. The per-IP limit is useless against abuse spread over many
+addresses; the ceiling is what bounds the worst case. Note that most repeat
+traffic never reaches the limiter at all, because identical requests are served
+from the CDN without invoking the function. Returns `429` with `Retry-After` and
 `X-RateLimit-*` headers. Counters live in Postgres — no Redis to provision — and
 the limiter **fails open**, since a limiter that 500s would take the whole
 public API down with it.

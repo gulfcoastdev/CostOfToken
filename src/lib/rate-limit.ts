@@ -20,9 +20,26 @@ export interface RateLimitResult {
   reset: number
   retryAfterSeconds: number
   subject: string
+  /** Blocked by the site-wide ceiling rather than the caller's own limit. */
+  globalLimited?: boolean
 }
 
 const WINDOW_MS = 60 * 60 * 1000 // 1 hour
+
+/**
+ * Ceiling across all callers combined, per hour.
+ *
+ * The per-IP limit does nothing against abuse spread over many addresses, and
+ * an IPv6 /64 or a proxy pool makes that trivial. On a free plan the
+ * consequence is not a bill — Vercel and Supabase have no spend on their free
+ * tiers — it is the project being paused for exceeding fair use, which takes
+ * the site down. This bounds the worst case so that cannot happen quietly.
+ *
+ * Set generously: it is a backstop, not a business rule. Legitimate traffic
+ * should never approach it, and most repeat traffic never reaches the function
+ * at all because the CDN answers it.
+ */
+const GLOBAL_SUBJECT = 'global'
 
 /**
  * Identify the caller.
@@ -90,15 +107,48 @@ export async function checkRateLimit(request: Request): Promise<RateLimitResult>
   const retryAfterSeconds = Math.max(1, reset - Math.floor(Date.now() / 1000))
 
   let count: number
+  let globalCount: number
   try {
-    const [row] = await sql<Array<{ consume_rate_limit: number }>>`
-      select consume_rate_limit(${subject}, ${windowStart}) as consume_rate_limit
+    // Both counters in one round trip: a limiter that costs two queries per
+    // request is itself load.
+    const [row] = await sql<Array<{ subject_count: number; global_count: number }>>`
+      with caller as (
+        insert into api_rate_limits (subject, window_start, count)
+        values (${subject}, ${windowStart}, 1)
+        on conflict (subject, window_start)
+          do update set count = api_rate_limits.count + 1
+        returning count
+      ),
+      everyone as (
+        insert into api_rate_limits (subject, window_start, count)
+        values (${GLOBAL_SUBJECT}, ${windowStart}, 1)
+        on conflict (subject, window_start)
+          do update set count = api_rate_limits.count + 1
+        returning count
+      )
+      select (select count from caller) as subject_count,
+             (select count from everyone) as global_count
     `
-    count = row?.consume_rate_limit ?? 1
+    count = row?.subject_count ?? 1
+    globalCount = row?.global_count ?? 1
   } catch {
     // Fail open. A rate limiter that 500s takes the whole public API down with
     // it, which is a worse outcome than briefly not enforcing the cap.
     return { allowed: true, limit, remaining: limit, reset, retryAfterSeconds, subject }
+  }
+
+  // The global ceiling wins. Reported against the caller's own limit so the
+  // headers stay meaningful to them, but the reason is recorded for logs.
+  if (globalCount > env.globalRateLimitPerHour) {
+    return {
+      allowed: false,
+      limit,
+      remaining: 0,
+      reset,
+      retryAfterSeconds,
+      subject,
+      globalLimited: true,
+    }
   }
 
   return {

@@ -53,6 +53,17 @@ export const env = {
     const parsed = raw ? Number.parseInt(raw, 10) : NaN
     return Number.isFinite(parsed) && parsed > 0 ? parsed : 60
   },
+  /**
+   * Site-wide request ceiling per hour, across every caller.
+   *
+   * A backstop against distributed abuse, which a per-IP limit cannot see.
+   * Generous by design — legitimate traffic should never reach it.
+   */
+  get globalRateLimitPerHour(): number {
+    const raw = process.env.RATE_LIMIT_GLOBAL_PER_HOUR
+    const parsed = raw ? Number.parseInt(raw, 10) : Number.NaN
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : 20_000
+  },
   get xaiApiKey(): string | undefined {
     return process.env.XAI_API_KEY || undefined
   },

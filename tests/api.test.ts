@@ -128,3 +128,63 @@ describe('public API', { skip: hasDatabase ? false : 'no DATABASE_URL set' }, ()
     assert.ok(body.data.every((row) => typeof row.model_count === 'number'))
   })
 })
+
+describe('rate limiting', { skip: hasDatabase ? false : 'no DATABASE_URL set' }, () => {
+  let closeDb: () => Promise<void>
+
+  before(async () => {
+    ;({ closeDb } = await import('../src/lib/db.ts'))
+  })
+
+  after(async () => {
+    await closeDb()
+  })
+
+  test('a caller is blocked after exceeding its own limit', async () => {
+    process.env.RATE_LIMIT_ANON_PER_HOUR = '3'
+    process.env.RATE_LIMIT_GLOBAL_PER_HOUR = '100000'
+    const { checkRateLimit } = await import('../src/lib/rate-limit.ts')
+
+    // A distinct address so the count is not shared with other tests.
+    const ip = `198.51.100.${Math.ceil(Math.random() * 250)}`
+    const call = () =>
+      checkRateLimit(new Request('https://example.test/api/v1/prices', {
+        headers: { 'x-forwarded-for': ip },
+      }))
+
+    const results = [await call(), await call(), await call(), await call()]
+
+    assert.deepEqual(
+      results.map((r) => r.allowed),
+      [true, true, true, false],
+      'the fourth request should be refused',
+    )
+    assert.equal(results[3].remaining, 0)
+    assert.ok(results[3].retryAfterSeconds > 0)
+  })
+
+  test('the site-wide ceiling blocks even a caller under its own limit', async () => {
+    /*
+     * The protection a per-IP limit cannot provide. Abuse spread across many
+     * addresses never trips an individual limit, and on a free plan the
+     * consequence is the project being paused rather than a bill.
+     */
+    process.env.RATE_LIMIT_ANON_PER_HOUR = '100000'
+    process.env.RATE_LIMIT_GLOBAL_PER_HOUR = '1'
+    const { checkRateLimit } = await import('../src/lib/rate-limit.ts')
+
+    // Every call from a different address, so no individual limit is reached.
+    const call = (n: number) =>
+      checkRateLimit(new Request('https://example.test/api/v1/prices', {
+        headers: { 'x-forwarded-for': `203.0.113.${n}` },
+      }))
+
+    await call(1)
+    const blocked = await call(2)
+
+    assert.equal(blocked.allowed, false, 'the global ceiling should refuse this')
+    assert.equal(blocked.globalLimited, true)
+    // Its own limit was nowhere near reached, which is the point.
+    assert.equal(blocked.limit, 100000)
+  })
+})
