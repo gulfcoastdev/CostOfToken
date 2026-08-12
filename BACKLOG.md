@@ -41,37 +41,34 @@ Working roadmap. Ordered by priority, not by effort.
       (`?modality=`). What is missing is modality filtering on provider pages
       and any landing page for a modality.
 
-- [ ] **Mobile overhaul — the site is desktop-first and phones show it**
-      A nine-column table forced sideways into a 390px viewport. The fix is a
-      different presentation, not a narrower table.
+- [x] **Mobile overhaul** — done in `ecdfc18`.
+      A nine-column table forced sideways into a 390px viewport. Fixed with a
+      different presentation rather than a narrower table.
 
-      *In priority order:*
+      1. **Cards instead of a wide table** — main list and Popular models,
+         below `sm`. Name, provider dot, labelled input / output / blended,
+         context, star, and badges (Free, Best value, Flagship, modality,
+         Via OpenRouter).
+      2. **Input and output always visible** — the whole point. Output used to
+         sit off the right edge in both places.
+      3. **Modality is pills, not a `<select>`**; sort lives in the pinned
+         compact bar; provider pills collapse behind a disclosure that is
+         forced open whenever a provider is selected.
+      4. **Cards | Table toggle**, remembered in localStorage, defaulting to
+         `auto` — resolved by CSS at the breakpoint, not by JS. The table keeps
+         its frozen `#` and Model columns.
+      5. **44px tap targets**, three-across averages, collapsible
+         "What that buys you".
 
-      1. **Cards instead of a wide table.** The main list and Popular models
-         become cards on mobile: name, provider with its colour dot, input /
-         output / blended each labelled, context window, star, and badges
-         (Free, Best value, Flagship, Via OpenRouter, modality). No horizontal
-         scrolling, no truncated columns.
-      2. **Input and output prices always visible.** Output is currently off
-         the right edge on a phone, and Popular models drops it entirely —
-         which makes the panel useless for the comparison it exists to serve.
-      3. **Modality and sort filters.** Modality moves from a `<select>` to
-         prominent pills; sort stays reachable while scrolling. Provider pills
-         collapse behind a disclosure — ten of them wrap to three rows and eat
-         the viewport.
-      4. **Cards | Table toggle**, so the dense view is still available.
-         Default follows the breakpoint. In table view keep the Model column
-         frozen and scroll only the prices.
-      5. **Spacing and touch targets.** The star and filter chips are below
-         the 44px comfortable minimum. Averages sit side by side rather than
-         stacked, and "What that buys you" collapses.
+      Nav scrolls instead of wrapping, and Calculator is outlined.
 
-      *Also:* make Calculator visually distinct in the nav — it is the highest
-      value page and reads as just another link. The nav wraps under the logo
-      on narrow screens; it should scroll horizontally instead.
+      *Kept honest by:* `model-card.tsx` owns the card, the badges and the
+      expanded detail block, and the table row renders that same detail
+      component — so the two views cannot drift on best value or source.
 
-      *Notes:* the card and table views must share one source of ranking and
-      badge logic. Two code paths computing "Best value" is how they drift.
+      *Still open:* nothing renders these components in a test. The whole
+      mobile path is verified by hand only — see "Page render tests" below,
+      which this makes materially more valuable than it was.
 
 ---
 
