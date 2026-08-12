@@ -14,6 +14,20 @@ declare global {
  * multiplexes connections and cannot support session-scoped prepared
  * statements. Without it, queries fail intermittently under concurrency.
  */
+/**
+ * Connection options, exported so they can be asserted in tests.
+ *
+ * A timing test cannot catch a pool that is too small: against a local
+ * database every query is fast enough that even fully serialised reads finish
+ * instantly. The fault only appeared with remote latency and parallel renders.
+ * So the configuration itself is the thing worth guarding.
+ */
+export const POOL_OPTIONS = {
+  max: 10,
+  idle_timeout: 0,
+  connect_timeout: 8,
+} as const
+
 function createClient(): postgres.Sql {
   return postgres(env.databaseUrl, {
     prepare: false,
@@ -30,11 +44,11 @@ function createClient(): postgres.Sql {
      * drained — queries completed, then later ones waited past the 60 second
      * page timeout and the build failed.
      */
-    max: 10,
+    max: POOL_OPTIONS.max,
     // Never close idle connections. Reconnecting mid-build was part of the
     // same stall; the pooler reclaims genuinely dead sockets on its own.
-    idle_timeout: 0,
-    connect_timeout: 8,
+    idle_timeout: POOL_OPTIONS.idle_timeout,
+    connect_timeout: POOL_OPTIONS.connect_timeout,
     // numeric(12,6) arrives as a string by default to avoid float precision
     // loss. Prices are small enough that a JS number is exact here, and the
     // API contract says these are numbers.

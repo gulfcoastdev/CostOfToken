@@ -1,5 +1,33 @@
 import { unstable_cache } from 'next/cache'
 import { sql } from './db.ts'
+
+/**
+ * Cache a read, falling back to reading directly when there is no cache.
+ *
+ * `unstable_cache` requires Next's request scope and throws an invariant
+ * without it, which makes every cached function unusable — and untestable —
+ * from a plain script. Degrading to an uncached read keeps the same function
+ * working in tests, CLI scripts and the pipeline, while production still gets
+ * the cache.
+ */
+function cachedRead<Args extends unknown[], Result>(
+  read: (...args: Args) => Promise<Result>,
+  keys: string[],
+  options: { revalidate: number; tags: string[] },
+): (...args: Args) => Promise<Result> {
+  const wrapped = unstable_cache(read, keys, options)
+
+  return async (...args: Args) => {
+    try {
+      return await wrapped(...args)
+    } catch (error) {
+      if (error instanceof Error && /incrementalCache/i.test(error.message)) {
+        return read(...args)
+      }
+      throw error
+    }
+  }
+}
 import type { HistoryPointV1, PriceRowV1, SourceKind } from './types.ts'
 
 /** Read models for the public API and the comparison table. */
@@ -69,7 +97,7 @@ export interface PricesPage {
 }
 
 /** Cached for the same reason as getProviderModels. */
-export const getPrices = unstable_cache(getPricesUncached, ['prices'], {
+export const getPrices = cachedRead(getPricesUncached, ['prices'], {
   revalidate: 300,
   tags: ['prices'],
 })
@@ -197,7 +225,7 @@ export interface PriceTrend {
  * A Map cannot survive the data cache — it serialises to `{}` — so the cached
  * layer stores entries as an array and the Map is rebuilt on the way out.
  */
-const getPriceTrendEntries = unstable_cache(
+const getPriceTrendEntries = cachedRead(
   async (days?: number, points?: number) => [...(await getPriceTrendsUncached(days, points))],
   ['price-trends'],
   { revalidate: 300, tags: ['prices'] },
@@ -316,11 +344,10 @@ export async function getModelForProvider(
  * The data changes once a day, so serving a burst of renders from one cached
  * result costs nothing in freshness.
  */
-export const getProviderModels = unstable_cache(
-  getProviderModelsUncached,
-  ['provider-models'],
-  { revalidate: 300, tags: ['prices'] },
-)
+export const getProviderModels = cachedRead(getProviderModelsUncached, ['provider-models'], {
+  revalidate: 300,
+  tags: ['prices'],
+})
 
 async function getProviderModelsUncached(provider: string): Promise<PriceRowV1[]> {
   const records = await sql<PriceRecord[]>`
@@ -334,7 +361,7 @@ async function getProviderModelsUncached(provider: string): Promise<PriceRowV1[]
   return records.map(toPriceRow)
 }
 
-export const getLastUpdated = unstable_cache(getLastUpdatedUncached, ['last-updated'], {
+export const getLastUpdated = cachedRead(getLastUpdatedUncached, ['last-updated'], {
   revalidate: 300,
   tags: ['prices'],
 })
@@ -346,7 +373,7 @@ async function getLastUpdatedUncached(): Promise<string | null> {
   return row?.updated_at ? row.updated_at.toISOString() : null
 }
 
-export const getProviders = unstable_cache(getProvidersUncached, ['providers'], {
+export const getProviders = cachedRead(getProvidersUncached, ['providers'], {
   revalidate: 300,
   tags: ['prices'],
 })

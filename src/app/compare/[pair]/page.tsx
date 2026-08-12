@@ -3,6 +3,7 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { Breadcrumbs, JsonLd, PageShell, SiteFooter } from '@/components/site-chrome.tsx'
 import { providerColor, SOURCE_LABELS } from '@/components/provider-colors.ts'
+import { estimateCost, formatCostShort } from '@/lib/cost.ts'
 import { formatContext, formatPrice } from '@/lib/format.ts'
 import { getBrand } from '@/lib/provider-brands.ts'
 import { getModelForProvider } from '@/lib/queries.ts'
@@ -33,18 +34,16 @@ const SCENARIOS = [
   { label: 'Coding agent', input: 30_000, output: 4_000, requests: 20_000 },
 ]
 
+/** Shared with the calculator, so both price a workload the same way. */
 function monthlyCost(row: PriceRowV1, input: number, output: number, requests: number): number | null {
-  if (row.input === null && row.output === null) return null
-  const perRequest = ((row.input ?? 0) * input + (row.output ?? 0) * output) / 1_000_000
-  return perRequest * requests
-}
-
-function money(value: number | null): string {
-  if (value === null) return '—'
-  if (value === 0) return '$0'
-  if (value < 1000) return `$${value.toFixed(2)}`
-  if (value < 1_000_000) return `$${(value / 1000).toFixed(1)}K`
-  return `$${(value / 1_000_000).toFixed(2)}M`
+  return estimateCost(row, {
+    inputTokens: input,
+    outputTokens: output,
+    requestsPerMonth: requests,
+    // These scenarios quote list price without caching, so the saving is
+    // stated separately rather than baked into the comparison.
+    cachedShare: 0,
+  }).monthly
 }
 
 async function load(slug: string) {
@@ -267,14 +266,14 @@ export default async function ComparePage({ params }: { params: Promise<{ pair: 
                       scenario.winner === 'a' ? 'font-semibold text-emerald-700' : 'text-neutral-700'
                     }`}
                   >
-                    {money(scenario.costA)}
+                    {formatCostShort(scenario.costA)}
                   </td>
                   <td
                     className={`px-4 py-3 text-right tabular-nums ${
                       scenario.winner === 'b' ? 'font-semibold text-emerald-700' : 'text-neutral-700'
                     }`}
                   >
-                    {money(scenario.costB)}
+                    {formatCostShort(scenario.costB)}
                   </td>
                   <td className="px-4 py-3 text-[13px] text-neutral-700">
                     {scenario.winner === 'tie' || scenario.winner === null

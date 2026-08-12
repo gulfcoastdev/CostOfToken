@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { formatCostShort, rankByWorkload, type CostEstimate } from '@/lib/cost.ts'
 import { formatContext } from '@/lib/format.ts'
 import { modelPath } from '@/lib/seo.ts'
 import type { PriceRowV1 } from '@/lib/types.ts'
@@ -67,35 +68,6 @@ export const PRESETS: WorkloadPreset[] = [
   },
 ]
 
-interface Row {
-  row: PriceRowV1
-  monthly: number | null
-  isFree: boolean
-  fitsContext: boolean
-}
-
-/**
- * Why a model cannot serve this workload, or null if it can.
- *
- * Embedding, moderation and OCR endpoints publish no output price because they
- * do not generate text. Treating that missing price as zero ranks them as the
- * cheapest way to run a chat workload, which is nonsense — they cannot run it
- * at all. They are excluded with a reason rather than silently dropped.
- */
-function inapplicableReason(row: PriceRowV1, outputTokens: number): string | null {
-  if (row.input === null && row.output === null) return 'no published pricing'
-  if (outputTokens > 0 && row.output === null) return 'does not generate output tokens'
-  return null
-}
-
-function money(value: number): string {
-  if (value === 0) return '$0'
-  if (value < 0.01) return `$${value.toFixed(4)}`
-  if (value < 1000) return `$${value.toFixed(2)}`
-  if (value < 1_000_000) return `$${(value / 1000).toFixed(1)}K`
-  return `$${(value / 1_000_000).toFixed(2)}M`
-}
-
 function clampNumber(value: string, fallback: number): number {
   const parsed = Number(value.replace(/[^0-9.]/g, ''))
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback
@@ -147,48 +119,17 @@ export function WorkloadCalculator({ rows }: { rows: PriceRowV1[] }) {
     setActivePreset(preset.id)
   }, [])
 
-  const { ranked, excluded } = useMemo(() => {
-    const perRequestContext = inputTokens + outputTokens
-    const skipped: Array<{ row: PriceRowV1; reason: string }> = []
+  const { paid, free, unusable } = useMemo(
+    () =>
+      rankByWorkload(rows, {
+        inputTokens,
+        outputTokens,
+        requestsPerMonth: requests,
+        cachedShare,
+      }),
+    [rows, inputTokens, outputTokens, requests, cachedShare],
+  )
 
-    const priced = rows
-      .map((row): Row | null => {
-        const reason = inapplicableReason(row, outputTokens)
-        if (reason) {
-          skipped.push({ row, reason })
-          return null
-        }
-
-        const inputPrice = row.input ?? 0
-        // Where a provider publishes no cached rate, cached tokens are billed
-        // at the normal input price rather than assumed free.
-        const cachedPrice = row.cached_input ?? inputPrice
-        const outputPrice = row.output ?? 0
-
-        const cachedTokens = inputTokens * cachedShare
-        const freshTokens = inputTokens - cachedTokens
-
-        const perRequest =
-          (freshTokens * inputPrice + cachedTokens * cachedPrice + outputTokens * outputPrice) /
-          1_000_000
-
-        return {
-          row,
-          monthly: perRequest * requests,
-          isFree: inputPrice === 0 && outputPrice === 0,
-          // A model that cannot hold the prompt is not a cheaper option, it is
-          // the wrong option — flagged rather than silently ranked first.
-          fitsContext: row.context_window === null || row.context_window >= perRequestContext,
-        }
-      })
-      .filter((entry): entry is Row => entry !== null)
-      .sort((a, b) => (a.monthly ?? 0) - (b.monthly ?? 0))
-
-    return { ranked: priced, excluded: skipped }
-  }, [rows, inputTokens, outputTokens, requests, cachedShare])
-
-  const free = ranked.filter((entry) => entry.isFree)
-  const paid = ranked.filter((entry) => !entry.isFree)
   const usable = paid.filter((entry) => entry.fitsContext)
   const cheapest = usable[0]
   const priciest = usable.at(-1)
@@ -277,12 +218,12 @@ export function WorkloadCalculator({ rows }: { rows: PriceRowV1[] }) {
         <section className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-3">
           <Stat
             label={`Cheapest — ${cheapest.row.display_name}`}
-            value={money(cheapest.monthly ?? 0)}
+            value={formatCostShort(cheapest.monthly ?? 0)}
             accent
           />
           <Stat
             label={`Most expensive — ${priciest.row.display_name}`}
-            value={money(priciest.monthly ?? 0)}
+            value={formatCostShort(priciest.monthly ?? 0)}
           />
           <Stat
             label="Difference between them"
@@ -378,10 +319,10 @@ export function WorkloadCalculator({ rows }: { rows: PriceRowV1[] }) {
                     </span>
                   </td>
                   <td className="px-3 py-2.5 text-right tabular-nums text-neutral-600">
-                    {money((entry.monthly ?? 0) / Math.max(requests, 1))}
+                    {formatCostShort((entry.monthly ?? 0) / Math.max(requests, 1))}
                   </td>
                   <td className="px-3 py-2.5 text-right font-semibold tabular-nums text-neutral-900">
-                    {money(entry.monthly ?? 0)}
+                    {formatCostShort(entry.monthly ?? 0)}
                   </td>
                   <td className="whitespace-nowrap px-3 py-2.5 text-right tabular-nums text-neutral-600">
                     {formatContext(entry.row.context_window)}
@@ -392,9 +333,9 @@ export function WorkloadCalculator({ rows }: { rows: PriceRowV1[] }) {
           </table>
         </div>
 
-        {excluded.length > 0 && (
+        {unusable.length > 0 && (
           <p className="mt-3 text-[12.5px] leading-relaxed text-neutral-500">
-            {excluded.length} model{excluded.length === 1 ? '' : 's'} excluded because they cannot
+            {unusable.length} model{unusable.length === 1 ? '' : 's'} excluded because they cannot
             serve this workload — mostly embedding, moderation and OCR endpoints that publish no
             output price because they do not generate text. Counting that missing price as zero
             would rank them as the cheapest way to run a chat.

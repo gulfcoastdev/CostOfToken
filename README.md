@@ -359,11 +359,30 @@ npm test        # parsing, validation, table/payload decoding
 npm run typecheck
 ```
 
-15 tests covering the logic where a silent regression publishes wrong prices:
-unit rescaling, currency handling, colspan headers, heading breadcrumbs, and
-the xAI payload decoder. They're regression guards for bugs found during
-development — including one where a `}` inside a model description corrupted
-the brace matcher.
+60 tests across four layers, each written for a fault that actually shipped:
+
+- **Parsing** — unit rescaling, currency handling, colspan headers, heading
+  breadcrumbs, the xAI payload decoder, and the tier-tab overwrite.
+- **Cost logic** — the calculator and comparison maths, extracted from the
+  components so it can be tested at all. Covers the two faults that shipped
+  from it: models with no output price ranking as the cheapest way to run a
+  chat, and prompts larger than the context window ranking above models that
+  fit.
+- **Database** — real queries against a real database, covering shape,
+  filtering, ordering and the `Map` that could not survive the data cache.
+- **API routes** — called directly with a `Request`, covering the response
+  envelope, attribution, parameter validation, and that headers are
+  constructible ASCII (a single em dash there returned 500 for every call).
+
+Database and API suites need `DATABASE_URL` and skip without it. They read only
+`DATABASE_URL`, never `SUPABASE_DB_URL`, so the suite cannot reach production.
+
+One test asserts the connection pool size rather than timing it. A pool of one
+serialised every concurrent render and took the site down, but a timing test
+cannot catch it — verified by reintroducing the bug, which the concurrency test
+still passed, because a local database answers fast enough that even serialised
+reads finish instantly. The fault needs remote latency to appear, so the
+configuration is what gets guarded.
 
 ---
 
