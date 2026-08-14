@@ -29,6 +29,7 @@ function incoming(
     contextWindow: 128_000,
     maxOutputTokens: null,
     longContextThreshold: null,
+    description: null,
     modality: ['text'] as NormalizedModel['modality'],
     tags: [],
     isActive: true,

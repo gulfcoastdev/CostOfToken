@@ -59,6 +59,12 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
         changeFrequency: 'daily' as const,
         priority: 0.9,
       },
+      {
+        url: absoluteUrl('/compare'),
+        lastModified: homeModified,
+        changeFrequency: 'daily' as const,
+        priority: 0.8,
+      },
       ...COMPARISONS.map((pair) => ({
         url: absoluteUrl(`/compare/${pair.slug}`),
         lastModified: homeModified,

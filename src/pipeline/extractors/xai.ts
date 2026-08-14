@@ -1,5 +1,5 @@
 import type { Modality, NormalizedModel } from '@/lib/types.ts'
-import { inferTags } from '../normalize.ts'
+import { cleanDescription, inferTags } from '../normalize.ts'
 import type { Extractor } from './types.ts'
 
 const SOURCE_URL = 'https://docs.x.ai/docs/models'
@@ -19,6 +19,7 @@ const PRICE_UNITS_PER_USD_PER_MILLION = 10_000
 
 interface XaiModel {
   name?: string
+  description?: string
   inputModalities?: string[]
   outputModalities?: string[]
   promptTextTokenPrice?: string | number
@@ -58,12 +59,14 @@ export const xaiExtractor: Extractor = {
       const modality = toModalities(entry.inputModalities, entry.outputModalities)
       const tags = new Set(inferTags(modelId))
       if (entry.features?.reasoning) tags.add('reasoning')
+      // Declared by the catalogue, not guessed from the model's name.
       if (modality.includes('vision')) tags.add('vision')
 
       models.set(modelId, {
         providerSlug: 'xai',
         modelId,
         displayName: modelId,
+        description: cleanDescription(entry.description),
         contextWindow: typeof entry.maxPromptLength === 'number' ? entry.maxPromptLength : null,
         maxOutputTokens: null,
         // The long-context tier kicks in above 128k on xAI's published tiers.
@@ -90,13 +93,7 @@ export const xaiExtractor: Extractor = {
   },
 }
 
-function toUsdPerMillion(value: string | number | undefined): number | null {
-  if (value === undefined || value === null || value === '') return null
-  const numeric = typeof value === 'number' ? value : Number.parseFloat(value)
-  if (!Number.isFinite(numeric) || numeric < 0) return null
-  return numeric / PRICE_UNITS_PER_USD_PER_MILLION
-}
-
+/** Declared by xAI's own catalogue, unlike the name-based inference elsewhere. */
 function toModalities(input?: string[], output?: string[]): Modality[] {
   const all = [...(input ?? []), ...(output ?? [])].map((m) => m.toLowerCase())
   const modality = new Set<Modality>(['text'])
@@ -104,6 +101,13 @@ function toModalities(input?: string[], output?: string[]): Modality[] {
   if (all.includes('audio')) modality.add('audio')
   if (all.includes('video')) modality.add('video')
   return [...modality]
+}
+
+function toUsdPerMillion(value: string | number | undefined): number | null {
+  if (value === undefined || value === null || value === '') return null
+  const numeric = typeof value === 'number' ? value : Number.parseFloat(value)
+  if (!Number.isFinite(numeric) || numeric < 0) return null
+  return numeric / PRICE_UNITS_PER_USD_PER_MILLION
 }
 
 /**

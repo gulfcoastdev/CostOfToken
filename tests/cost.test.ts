@@ -19,6 +19,7 @@ function model(overrides: Partial<PriceRowV1> = {}): PriceRowV1 {
     long_cached_input: null,
     long_output: null,
     currency: 'USD',
+    description: null,
     modality: ['text'],
     tags: [],
     source_url: null,

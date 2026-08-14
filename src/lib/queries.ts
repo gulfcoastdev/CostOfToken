@@ -82,6 +82,7 @@ interface PriceRecord {
   max_output_tokens: number | null
   long_context_threshold: number | null
   currency: string | null
+  description: string | null
   modality: string[]
   tags: string[]
   source_url: string | null
@@ -399,6 +400,10 @@ function toPriceRow(record: PriceRecord): PriceRowV1 {
     provider_name: record.provider_name,
     model_id: record.model_id,
     display_name: record.display_name,
+    // Coalesced rather than passed through: a database that has not had the
+    // description column added yet returns rows without the field at all, and
+    // an undefined here would drop the key from every API response.
+    description: record.description ?? null,
     input: record.input_price,
     cached_input: record.cached_input_price,
     output: record.output_price,

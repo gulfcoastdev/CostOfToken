@@ -32,7 +32,18 @@ export interface NormalizedModel {
   contextWindow: number | null
   maxOutputTokens: number | null
   longContextThreshold: number | null
+  /**
+   * NOT SURFACED IN THE UI. The values here were largely guessed from model
+   * names and are wrong often enough not to be shown; the column is kept so
+   * the assignment can be rebuilt from sources that actually declare it.
+   */
   modality: Modality[]
+  /**
+   * A sentence or two on what the model is for, as published by whoever
+   * described it. Null when no source stated one — never a guess, since an
+   * invented summary of a model is worse than no summary.
+   */
+  description: string | null
   tags: string[]
   isActive: boolean
   pricing: NormalizedPricing
@@ -52,6 +63,7 @@ export interface PriceRowV1 {
   provider_name: string
   model_id: string
   display_name: string
+  description: string | null
   input: number | null
   cached_input: number | null
   output: number | null
@@ -62,6 +74,7 @@ export interface PriceRowV1 {
   long_cached_input: number | null
   long_output: number | null
   currency: string
+  /** Unreliable — stored and served, but deliberately not displayed. */
   modality: string[]
   tags: string[]
   source_url: string | null

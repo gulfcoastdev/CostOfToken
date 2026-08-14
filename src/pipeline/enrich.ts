@@ -1,12 +1,14 @@
 import type { NormalizedModel } from '@/lib/types.ts'
 import { MODEL_OVERRIDES, type ModelOverride } from '../../data/overrides.ts'
 import type { ExtractorContext } from './extractors/types.ts'
+import { cleanDescription } from './normalize.ts'
 
 /**
  * Post-extraction enrichment.
  *
- * Vendor pricing pages list prices but usually not context windows, so those
- * are filled in from two places, in increasing order of authority:
+ * Vendor pricing pages list prices but usually not context windows or any
+ * prose about what a model is for, so those are filled in from two places, in
+ * increasing order of authority:
  *
  *   1. A secondary catalogue (OpenRouter), matched on exact normalised model
  *      id. Only *metadata* is taken from it — never a price. Prices stay
@@ -15,7 +17,9 @@ import type { ExtractorContext } from './extractors/types.ts'
  *
  * Matching is exact-after-normalisation on purpose. Fuzzy matching across
  * vendors silently attaches one model's context window to another, which is
- * worse than leaving the field null.
+ * worse than leaving the field null — and attaches one model's *description*
+ * to another, which is worse still, because prose reads as authoritative in a
+ * way a number does not.
  */
 
 const METADATA_SOURCE = 'https://openrouter.ai/api/v1/models'
@@ -23,6 +27,7 @@ const METADATA_SOURCE = 'https://openrouter.ai/api/v1/models'
 interface MetadataEntry {
   contextWindow: number | null
   maxOutputTokens: number | null
+  description: string | null
 }
 
 /** Strip punctuation and case so "GPT-5.6 Sol" and "gpt-5.6-sol" compare equal. */
@@ -40,6 +45,7 @@ async function loadMetadataCatalogue(
     data?: Array<{
       id: string
       name?: string
+      description?: string | null
       context_length?: number | null
       top_provider?: { max_completion_tokens?: number | null }
     }>
@@ -57,6 +63,7 @@ async function loadMetadataCatalogue(
     const metadata: MetadataEntry = {
       contextWindow: entry.context_length ?? null,
       maxOutputTokens: entry.top_provider?.max_completion_tokens ?? null,
+      description: cleanDescription(entry.description),
     }
 
     // Index under the model id and, separately, its display name, since
@@ -96,6 +103,7 @@ const OVERRIDE_INDEX = new Map<string, ModelOverride>(
 export interface EnrichmentReport {
   metadataSourceOk: boolean
   contextWindowsFilled: number
+  descriptionsFilled: number
   overridesApplied: number
   error?: string
 }
@@ -107,11 +115,14 @@ export async function enrichModels(
   const report: EnrichmentReport = {
     metadataSourceOk: false,
     contextWindowsFilled: 0,
+    descriptionsFilled: 0,
     overridesApplied: 0,
   }
 
   let catalogue = new Map<string, MetadataEntry>()
-  const needsMetadata = models.some((m) => m.contextWindow === null)
+  const needsMetadata = models.some(
+    (m) => m.contextWindow === null || m.maxOutputTokens === null || m.description === null,
+  )
 
   if (needsMetadata) {
     try {
@@ -128,16 +139,19 @@ export async function enrichModels(
     const key = normalizeKey(model.providerSlug, model.modelId)
     let next = model
 
-    if (next.contextWindow === null || next.maxOutputTokens === null) {
+    if (next.contextWindow === null || next.maxOutputTokens === null || next.description === null) {
       const metadata =
         catalogue.get(key) ?? catalogue.get(normalizeKey(model.providerSlug, model.displayName))
       if (metadata) {
         const contextWindow = next.contextWindow ?? metadata.contextWindow
         if (contextWindow !== next.contextWindow) report.contextWindowsFilled++
+        const description = next.description ?? metadata.description
+        if (description !== next.description) report.descriptionsFilled++
         next = {
           ...next,
           contextWindow,
           maxOutputTokens: next.maxOutputTokens ?? metadata.maxOutputTokens,
+          description,
         }
       }
     }
@@ -151,6 +165,7 @@ export async function enrichModels(
         contextWindow: override.context_window ?? next.contextWindow,
         maxOutputTokens: override.max_output_tokens ?? next.maxOutputTokens,
         longContextThreshold: override.long_context_threshold ?? next.longContextThreshold,
+        description: override.description ?? next.description,
         modality: override.modality ?? next.modality,
         tags: override.tags ?? next.tags,
         isActive: override.is_active ?? next.isActive,

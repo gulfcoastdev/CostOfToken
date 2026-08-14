@@ -36,10 +36,26 @@ Working roadmap. Ordered by priority, not by effort.
       showing the `meta.attribution` field in the response so integrators see
       the backlink requirement in the example itself.
 
-- [ ] **Filter by model type (text, vision, audio, …)**
-      *Notes:* the modality filter exists on the home table and the API
-      (`?modality=`). What is missing is modality filtering on provider pages
-      and any landing page for a modality.
+- [ ] **Filter by model type (text, vision, audio, …)** — blocked on the data.
+      *Notes:* the modality filter has been **removed from the UI**. Most values
+      were inferred from model names by regex (`inferModality`) and were wrong
+      often enough that filtering on them hid models that did qualify — worse
+      than no filter. The column, the pipeline writes and the API `?modality=`
+      parameter are all still there, so nothing has to be rebuilt; what is
+      needed first is a source that *declares* modalities for every provider,
+      not just OpenRouter and xAI. Re-enable the UI only after that.
+
+- [x] **Build-your-own comparison** — done. `/compare` takes up to three models,
+      shows specs side by side and prices them against three workloads. Ticking
+      rows on the home table feeds it, and the selection lives in the URL so a
+      comparison can be sent to someone. The curated `/compare/<a>-vs-<b>`
+      pages stay — they carry editorial reasoning this cannot.
+
+- [x] **Model descriptions** — done. `models.description`, captured from
+      whichever source published one (OpenRouter's catalogue covers most, xAI's
+      own catalogue the rest) and never generated. Shown on model pages, in the
+      expanded row, and on the comparison page; searchable from the home table.
+      An extraction run that finds no description leaves the stored one alone.
 
 - [x] **Mobile overhaul** — done in `ecdfc18`.
       A nine-column table forced sideways into a 390px viewport. Fixed with a

@@ -58,6 +58,7 @@ export const zhipuExtractor: Extractor = {
           contextWindow: null,
           maxOutputTokens: null,
           longContextThreshold: null,
+          description: null, // the pricing page carries no prose; enrichment fills it
           modality: inferModality(displayName),
           tags: inferTags(displayName),
           isActive: true,

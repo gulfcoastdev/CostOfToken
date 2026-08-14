@@ -290,7 +290,7 @@ for cost, model in sorted(priced)[:5]:
             <tbody>
               {[
                 ['provider', 'Slug, repeatable or comma-separated: openai,anthropic'],
-                ['modality', 'text · vision · audio · video · image'],
+                ['modality', 'text · vision · audio · video · image — unreliable, see below'],
                 ['tag', 'flagship · fast · reasoning · coding · vision'],
                 ['q', 'Substring match on model id or display name'],
                 ['min_input, max_input', 'Bounds on input price per 1M tokens'],
@@ -328,6 +328,18 @@ for cost, model in sorted(priced)[:5]:
             <code className="font-mono text-[13px]">scrape</code> for a vendor&apos;s own page or{' '}
             <code className="font-mono text-[13px]">api</code> for the OpenRouter catalogue — a
             reseller whose price can differ. Check it before treating a figure as authoritative.
+          </li>
+          <li>
+            <code className="font-mono text-[13px]">description</code> is prose captured from
+            whoever published it, or <code className="font-mono text-[13px]">null</code> when no
+            source stated one. It is never generated here, so an absent description means nobody
+            wrote one — not that the model is uninteresting.
+          </li>
+          <li>
+            <code className="font-mono text-[13px]">modality</code> is currently unreliable —
+            most values were inferred from model names rather than declared by the vendor, so
+            nothing on this site displays them. It is still served so the field does not vanish
+            from under existing callers, but do not trust it.
           </li>
           <li>
             <code className="font-mono text-[13px]">long_input</code> and{' '}

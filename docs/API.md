@@ -68,7 +68,7 @@ Current prices for all tracked models.
 | Param | Type | Notes |
 | --- | --- | --- |
 | `provider` | string | Repeatable or comma-separated: `?provider=openai,xai` |
-| `modality` | string | `text`, `vision`, `audio`, `video`, `image` |
+| `modality` | string | `text`, `vision`, `audio`, `video`, `image` — **unreliable**, see below |
 | `tag` | string | `flagship`, `fast`, `reasoning`, `coding`, `vision`, … |
 | `q` | string | Substring match on model id or display name |
 | `min_input`, `max_input` | number | Bounds on input price per 1M |
@@ -92,12 +92,14 @@ curl 'https://<host>/api/v1/prices?provider=xai&sort=input&limit=3'
 | --- | --- | --- |
 | `provider`, `provider_name` | string | Slug and display name |
 | `model_id`, `display_name` | string | |
+| `description` | string \| null | Prose from whoever published it; `null` when no source stated one |
 | `input`, `cached_input`, `output` | number \| null | Standard tier, per 1M tokens |
 | `long_input`, `long_cached_input`, `long_output` | number \| null | Long-context tier |
 | `long_context_threshold` | int \| null | Token count above which the long tier applies |
 | `context_window`, `max_output_tokens` | int \| null | |
 | `currency` | string | Usually `USD` |
-| `modality`, `tags` | string[] | |
+| `tags` | string[] | |
+| `modality` | string[] | **Unreliable** — mostly inferred from model names, not declared by vendors. Not displayed anywhere on the site; served only so existing callers do not break. |
 | `source_url` | string \| null | Document the price was read from |
 | `source_kind` | enum | `scrape` = vendor's own page · `api` = reseller catalogue · `catalog` = curated |
 | `updated_at` | string | ISO 8601 |

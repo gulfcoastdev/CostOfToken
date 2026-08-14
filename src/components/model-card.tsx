@@ -78,7 +78,6 @@ export function ModelBadges({
   isFree: boolean
   isTop: boolean
 }) {
-  const modalities = row.modality.filter((value) => value !== 'text')
   const badges: Array<{ key: string; label: string; className: string }> = []
 
   if (isFree)
@@ -99,13 +98,6 @@ export function ModelBadges({
       label: 'Flagship',
       className: 'bg-violet-50 text-violet-700',
     })
-  for (const modality of modalities) {
-    badges.push({
-      key: `modality-${modality}`,
-      label: modality[0].toUpperCase() + modality.slice(1),
-      className: 'bg-neutral-100 text-neutral-600',
-    })
-  }
   if (row.source_kind !== 'scrape')
     badges.push({
       key: 'source',
@@ -134,6 +126,9 @@ export function ModelCard({
   rank,
   pinned,
   onTogglePin,
+  compared,
+  compareFull,
+  onToggleCompare,
   isBest,
   isTop,
   expanded,
@@ -143,6 +138,11 @@ export function ModelCard({
   rank: number
   pinned: boolean
   onTogglePin: (modelId: string) => void
+  /** Ticked for the side-by-side comparison. */
+  compared: boolean
+  /** The comparison is full, so unticked models cannot be added. */
+  compareFull: boolean
+  onToggleCompare: (key: string) => void
   isBest: boolean
   isTop: boolean
   expanded: boolean
@@ -201,7 +201,24 @@ export function ModelCard({
           <ModelBadges row={row} isFree={isFree} isTop={isTop} />
         </div>
 
-        <span className="shrink-0 pt-3 text-[11px] tabular-nums text-neutral-400">#{rank}</span>
+        {/* Rank and the compare tick share the right rail: on a phone the
+            card has no spare row for a control of its own. */}
+        <span className="flex shrink-0 flex-col items-end gap-2 pt-3">
+          <span className="text-[11px] tabular-nums text-neutral-400">#{rank}</span>
+          <input
+            type="checkbox"
+            checked={compared}
+            disabled={!compared && compareFull}
+            onChange={() => onToggleCompare(`${row.provider}|${row.model_id}`)}
+            onClick={(event) => event.stopPropagation()}
+            aria-label={
+              compared
+                ? `Remove ${row.display_name} from the comparison`
+                : `Compare ${row.display_name}`
+            }
+            className="h-4 w-4 cursor-pointer accent-emerald-600 disabled:cursor-not-allowed disabled:opacity-40"
+          />
+        </span>
       </div>
 
       <PriceTriple input={row.input} output={row.output} blended={blended} />
@@ -271,6 +288,14 @@ export function ModelDetails({ row }: { row: ExplorerRow }) {
 
   return (
     <div className="text-[13px] text-neutral-600">
+      {/* Leads the block: what the model is answers a different question from
+          what it costs, and the reader who opened a row usually wants both. */}
+      {row.description && (
+        <p className="m-0 mb-2.5 max-w-3xl text-[13.5px] leading-relaxed text-neutral-700">
+          {row.description}
+        </p>
+      )}
+
       <div className="flex flex-wrap gap-x-8 gap-y-2">
         <span>
           <strong className="font-semibold text-neutral-800">Cached input:</strong>{' '}

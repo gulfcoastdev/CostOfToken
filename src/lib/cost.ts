@@ -110,6 +110,42 @@ export function rankByWorkload(rows: PriceRowV1[], workload: Workload): RankedWo
   }
 }
 
+export interface Scenario {
+  label: string
+  input: number
+  output: number
+  requests: number
+}
+
+/**
+ * The three request shapes every comparison is priced against.
+ *
+ * Shared by the curated versus pages and the build-your-own comparison so both
+ * answer "which is cheaper" the same way. Which model wins genuinely flips
+ * between these three — that flip is the whole point of showing more than one.
+ */
+export const COMPARISON_SCENARIOS: Scenario[] = [
+  { label: 'Chat assistant', input: 1_500, output: 600, requests: 100_000 },
+  { label: 'RAG / document Q&A', input: 20_000, output: 500, requests: 30_000 },
+  { label: 'Coding agent', input: 30_000, output: 4_000, requests: 20_000 },
+]
+
+/**
+ * Monthly cost for one model under one scenario, at list price.
+ *
+ * Caching is deliberately excluded here: the saving depends on how much of a
+ * prompt actually repeats, and quoting it inside a head-to-head would bury the
+ * difference the page exists to show. It is stated separately instead.
+ */
+export function scenarioCost(row: PriceRowV1, scenario: Scenario): number | null {
+  return estimateCost(row, {
+    inputTokens: scenario.input,
+    outputTokens: scenario.output,
+    requestsPerMonth: scenario.requests,
+    cachedShare: 0,
+  }).monthly
+}
+
 /** Compact money for dense tables: $12.34, $1.2K, $3.45M. */
 export function formatCostShort(value: number | null): string {
   if (value === null) return '—'

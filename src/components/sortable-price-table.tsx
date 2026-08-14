@@ -1,11 +1,18 @@
 'use client'
 
 import Link from 'next/link'
-import { useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import { blendedPrice, formatContext, formatPrice } from '@/lib/format.ts'
 import { modelPath } from '@/lib/seo.ts'
 import type { PriceRowV1 } from '@/lib/types.ts'
 import { providerColor, SOURCE_LABELS } from './provider-colors.ts'
+import {
+  compareNullableNumbers,
+  compareText,
+  SortHeader,
+  useSortState,
+  type SortDirection,
+} from './sort-header.tsx'
 
 /**
  * The shared pricing table.
@@ -20,7 +27,8 @@ import { providerColor, SOURCE_LABELS } from './provider-colors.ts'
  * prerequisite for seeing the data.
  */
 
-export type PriceColumn = 'model' | 'provider' | 'input' | 'cached' | 'output' | 'blended' | 'context'
+export type PriceColumn =
+  'model' | 'provider' | 'input' | 'cached' | 'output' | 'blended' | 'context'
 
 /**
  * `source` is the order the provider itself lists models in on its pricing
@@ -42,7 +50,13 @@ const HEADINGS: Record<PriceColumn, { label: string; numeric: boolean }> = {
   context: { label: 'Context', numeric: true },
 }
 
-type Direction = 'asc' | 'desc'
+/**
+ * Context leads with the largest window on first click; every price column
+ * leads with the cheapest. `source` is already in the provider's own order.
+ */
+function defaultDirection(key: SortKey): SortDirection {
+  return key === 'context' ? 'desc' : 'asc'
+}
 
 export function SortablePriceTable({
   rows,
@@ -56,57 +70,40 @@ export function SortablePriceTable({
   initialSort?: SortKey
   caption: string
 }) {
-  const [sort, setSort] = useState<SortKey>(initialSort)
-  const [direction, setDirection] = useState<Direction>('asc')
+  const sortState = useSortState<SortKey>(initialSort, defaultDirection)
+  const { key: sort, direction, set: setSort } = sortState
 
   const sorted = useMemo(() => {
     // `rows` arrives in the provider's own order, so restoring it is just the
     // identity — no stored rank has to travel to the client.
     if (sort === 'source') return direction === 'asc' ? rows : [...rows].reverse()
 
-    const factor = direction === 'asc' ? 1 : -1
-
-    // Missing values sort last in both directions rather than clumping at the
-    // top of an ascending sort, where they'd read as "cheapest".
-    const numeric = (value: number | null) =>
-      value === null ? Number.POSITIVE_INFINITY : value
-
     return [...rows].sort((a, b) => {
       switch (sort) {
         case 'model':
-          return factor * a.display_name.localeCompare(b.display_name)
+          return compareText(a.display_name, b.display_name, direction)
         case 'provider':
           return (
-            factor * (a.provider_name.localeCompare(b.provider_name) ||
-              a.display_name.localeCompare(b.display_name))
+            compareText(a.provider_name, b.provider_name, direction) ||
+            compareText(a.display_name, b.display_name, 'asc')
           )
         case 'cached':
-          return factor * (numeric(a.cached_input) - numeric(b.cached_input))
+          return compareNullableNumbers(a.cached_input, b.cached_input, direction)
         case 'output':
-          return factor * (numeric(a.output) - numeric(b.output))
+          return compareNullableNumbers(a.output, b.output, direction)
         case 'blended':
-          return factor * (numeric(blendedPrice(a.input, a.output)) - numeric(blendedPrice(b.input, b.output)))
+          return compareNullableNumbers(
+            blendedPrice(a.input, a.output),
+            blendedPrice(b.input, b.output),
+            direction,
+          )
         case 'context':
-          // Bigger context is the more useful answer, so this one leads with
-          // the largest when first clicked.
-          return -factor * ((a.context_window ?? -1) - (b.context_window ?? -1))
+          return compareNullableNumbers(a.context_window, b.context_window, direction)
         default:
-          return factor * (numeric(a.input) - numeric(b.input))
+          return compareNullableNumbers(a.input, b.input, direction)
       }
     })
   }, [rows, sort, direction])
-
-  const toggle = (column: SortKey) => {
-    if (column === sort) {
-      setDirection((current) => (current === 'asc' ? 'desc' : 'asc'))
-    } else {
-      setSort(column)
-      setDirection('asc')
-    }
-  }
-
-  const ariaSort = (column: SortKey): 'ascending' | 'descending' | 'none' =>
-    sort === column ? (direction === 'asc' ? 'ascending' : 'descending') : 'none'
 
   return (
     <div>
@@ -118,10 +115,7 @@ export function SortablePriceTable({
             Sorted by {HEADINGS[sort as PriceColumn].label.toLowerCase()} ·{' '}
             <button
               type="button"
-              onClick={() => {
-                setSort('source')
-                setDirection('asc')
-              }}
+              onClick={() => setSort('source', 'asc')}
               className="font-medium text-emerald-700 underline underline-offset-2 hover:text-emerald-800"
             >
               back to provider order
@@ -130,48 +124,34 @@ export function SortablePriceTable({
         )}
       </p>
       <div className="overflow-x-auto rounded-xl border border-neutral-200 bg-white">
-      <table className="w-full min-w-[720px] border-collapse text-sm">
-        <caption className="sr-only">{caption}</caption>
-        <thead>
-          <tr className="border-b border-neutral-200">
-            {columns.map((column) => {
-              const heading = HEADINGS[column]
-              const active = sort === column
-              return (
-                <th
-                  key={column}
-                  scope="col"
-                  aria-sort={ariaSort(column)}
-                  className={`bg-white px-3 py-2.5 text-xs font-semibold whitespace-nowrap ${
-                    heading.numeric ? 'text-right' : 'text-left'
-                  }`}
-                >
-                  <button
-                    type="button"
-                    onClick={() => toggle(column)}
-                    className={`inline-flex items-center gap-1 rounded transition-colors focus-visible:outline-2 focus-visible:outline-emerald-600 ${
-                      active ? 'text-emerald-700' : 'text-neutral-500 hover:text-neutral-800'
-                    }`}
-                  >
-                    {heading.label}
-                    <span aria-hidden="true" className="text-[10px] leading-none">
-                      {active ? (direction === 'asc' ? '▲' : '▼') : '↕'}
-                    </span>
-                  </button>
-                </th>
-              )
-            })}
-          </tr>
-        </thead>
-        <tbody>
-          {sorted.map((row) => (
-            <tr key={`${row.provider}/${row.model_id}`} className="border-b border-neutral-100 last:border-0">
+        <table className="w-full min-w-[720px] border-collapse text-sm">
+          <caption className="sr-only">{caption}</caption>
+          <thead>
+            <tr className="border-b border-neutral-200">
               {columns.map((column) => (
-                <Cell key={column} column={column} row={row} />
+                <SortHeader
+                  key={column}
+                  column={column}
+                  label={HEADINGS[column].label}
+                  numeric={HEADINGS[column].numeric}
+                  sort={sortState}
+                  className="bg-white px-3 py-2.5 text-xs font-semibold whitespace-nowrap"
+                />
               ))}
             </tr>
-          ))}
-        </tbody>
+          </thead>
+          <tbody>
+            {sorted.map((row) => (
+              <tr
+                key={`${row.provider}/${row.model_id}`}
+                className="border-b border-neutral-100 last:border-0"
+              >
+                {columns.map((column) => (
+                  <Cell key={column} column={column} row={row} />
+                ))}
+              </tr>
+            ))}
+          </tbody>
         </table>
       </div>
     </div>

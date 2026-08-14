@@ -82,6 +82,7 @@ function model(overrides: Partial<NormalizedModel['pricing']> = {}): NormalizedM
     contextWindow: 128_000,
     maxOutputTokens: null,
     longContextThreshold: null,
+    description: null,
     modality: ['text'],
     tags: [],
     isActive: true,

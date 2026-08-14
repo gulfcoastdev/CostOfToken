@@ -250,6 +250,9 @@ export function jsonLdGraph(nodes: Json[]): string {
  */
 export function modelDescription(row: PriceRowV1): string {
   const parts = [
+    // The published description leads when there is one: a meta description
+    // that opens with what the model is beats one that opens with a number.
+    ...(row.description ? [row.description] : []),
     `${row.display_name} from ${row.provider_name} costs ${priceText(row.input)} per 1M input tokens and ${priceText(row.output)} per 1M output tokens.`,
   ]
   if (row.cached_input !== null) {

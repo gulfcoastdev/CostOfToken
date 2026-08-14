@@ -102,6 +102,7 @@ export const openaiExtractor: Extractor = {
           contextWindow: null, // not published on the pricing page; supplied by the catalog
           maxOutputTokens: null,
           longContextThreshold: threshold ?? (lInput || lOutput ? 128_000 : null),
+          description: null, // the pricing page carries no prose; enrichment fills it
           modality: inferModality(modelId, table.caption),
           tags: inferTags(modelId, table.caption),
           isActive: true,

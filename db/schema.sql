@@ -68,6 +68,12 @@ create trigger models_set_updated_at before update on models
 -- ranking from price alone.
 alter table models add column if not exists source_rank integer;
 
+-- A short prose summary of what the model is for, captured during extraction.
+-- Prices say what a model costs; this is the only field that says what it is,
+-- and it is the difference between a comparison page listing three rows of
+-- numbers and one a reader can actually decide from.
+alter table models add column if not exists description text;
+
 create index if not exists models_provider_idx on models (provider_id);
 create index if not exists models_source_rank_idx on models (provider_id, source_rank);
 create index if not exists models_active_idx   on models (is_active) where is_active;
@@ -263,7 +269,11 @@ select
   pr.source_url,
   pr.source_kind,
   pr.updated_at,
-  m.source_rank
+  m.source_rank,
+  -- Appended last on purpose: `create or replace view` can only add columns to
+  -- the end of an existing view's list, so a new field placed mid-list would
+  -- make this file fail to re-run against an already-deployed database.
+  m.description
 from models m
   join providers p on p.id = m.provider_id
   left join prices pr on pr.model_id = m.id;

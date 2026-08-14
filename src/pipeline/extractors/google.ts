@@ -84,6 +84,7 @@ export const googleExtractor: Extractor = {
         contextWindow: null, // published on the models page, not pricing; catalog supplies it
         maxOutputTokens: null,
         longContextThreshold: threshold,
+        description: null, // the pricing page carries no prose; enrichment fills it
         modality: inferModality(displayName, table.rows.map((r) => r[labelCol]).join(' ')),
         tags: inferTags(displayName),
         isActive: true,

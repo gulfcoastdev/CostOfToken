@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { Breadcrumbs, JsonLd, PageShell, PriceStat, SiteFooter } from '@/components/site-chrome.tsx'
+import { compareHref, modelKey } from '@/lib/compare.ts'
 import { formatContext, formatPrice } from '@/lib/format.ts'
 import { getBrand } from '@/lib/provider-brands.ts'
 import { getHistory, getModelForProvider, getProviderModels } from '@/lib/queries.ts'
@@ -103,7 +104,8 @@ export default async function ModelPage({
   const history = await getHistory(row.model_id, 12).catch((): HistoryPointV1[] => [])
 
   const cheaper = siblings.filter(
-    (s) => s.model_id !== row.model_id && s.input !== null && row.input !== null && s.input < row.input,
+    (s) =>
+      s.model_id !== row.model_id && s.input !== null && row.input !== null && s.input < row.input,
   )
   const faqs = buildFaqs(row, brandName, cheaper.at(-1) ?? null)
 
@@ -141,11 +143,20 @@ export default async function ModelPage({
         <h1 className="m-0 text-3xl font-bold tracking-tight text-neutral-950">
           {row.display_name} pricing
         </h1>
+        {/*
+          One paragraph, two jobs: `modelDescription` leads with the published
+          summary when there is one and follows it with the price facts, so the
+          page opens with what the model *is* rather than only what it costs —
+          and the meta description gets the same opening sentence.
+        */}
         <p className="mt-2 max-w-3xl text-[15px] leading-relaxed text-neutral-700">
           {modelDescription(row)}
         </p>
         <p className="mt-2 text-[13px] text-neutral-500">
-          API id <code className="rounded bg-neutral-200 px-1.5 py-0.5 font-mono text-xs">{row.model_id}</code>{' '}
+          API id{' '}
+          <code className="rounded bg-neutral-200 px-1.5 py-0.5 font-mono text-xs">
+            {row.model_id}
+          </code>{' '}
           · {row.provider_name} ·{' '}
           {row.source_url ? (
             <a
@@ -192,10 +203,18 @@ export default async function ModelPage({
             <caption className="sr-only">Estimated cost at common usage volumes</caption>
             <thead>
               <tr className="border-b border-neutral-200 text-left text-xs font-semibold text-neutral-500">
-                <th scope="col" className="px-3 py-2.5">Workload</th>
-                <th scope="col" className="px-3 py-2.5 text-right">Input tokens</th>
-                <th scope="col" className="px-3 py-2.5 text-right">Output tokens</th>
-                <th scope="col" className="px-3 py-2.5 text-right">Estimated cost</th>
+                <th scope="col" className="px-3 py-2.5">
+                  Workload
+                </th>
+                <th scope="col" className="px-3 py-2.5 text-right">
+                  Input tokens
+                </th>
+                <th scope="col" className="px-3 py-2.5 text-right">
+                  Output tokens
+                </th>
+                <th scope="col" className="px-3 py-2.5 text-right">
+                  Estimated cost
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -233,9 +252,15 @@ export default async function ModelPage({
             <table className="w-full min-w-[420px] border-collapse text-sm">
               <thead>
                 <tr className="border-b border-neutral-200 text-left text-xs font-semibold text-neutral-500">
-                  <th scope="col" className="px-3 py-2.5">Recorded</th>
-                  <th scope="col" className="px-3 py-2.5 text-right">Input /1M</th>
-                  <th scope="col" className="px-3 py-2.5 text-right">Output /1M</th>
+                  <th scope="col" className="px-3 py-2.5">
+                    Recorded
+                  </th>
+                  <th scope="col" className="px-3 py-2.5 text-right">
+                    Input /1M
+                  </th>
+                  <th scope="col" className="px-3 py-2.5 text-right">
+                    Output /1M
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -244,8 +269,12 @@ export default async function ModelPage({
                     <td className="px-3 py-2.5 text-neutral-700">
                       {point.recorded_at.slice(0, 10)}
                     </td>
-                    <td className="px-3 py-2.5 text-right tabular-nums">{formatPrice(point.input)}</td>
-                    <td className="px-3 py-2.5 text-right tabular-nums">{formatPrice(point.output)}</td>
+                    <td className="px-3 py-2.5 text-right tabular-nums">
+                      {formatPrice(point.input)}
+                    </td>
+                    <td className="px-3 py-2.5 text-right tabular-nums">
+                      {formatPrice(point.output)}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -260,33 +289,46 @@ export default async function ModelPage({
         </h2>
         <dl className="space-y-4">
           {faqs.map((faq) => (
-            <div key={faq.question} className="rounded-xl border border-neutral-200 bg-white px-5 py-4">
+            <div
+              key={faq.question}
+              className="rounded-xl border border-neutral-200 bg-white px-5 py-4"
+            >
               <dt className="font-semibold text-neutral-900">{faq.question}</dt>
-              <dd className="m-0 mt-1.5 text-[15px] leading-relaxed text-neutral-700">{faq.answer}</dd>
+              <dd className="m-0 mt-1.5 text-[15px] leading-relaxed text-neutral-700">
+                {faq.answer}
+              </dd>
             </div>
           ))}
         </dl>
       </section>
 
-      {comparisonsForModel(row.provider, row.model_id).length > 0 && (
-        <section className="mb-8">
-          <h2 className="mb-3 text-xl font-semibold tracking-tight text-neutral-950">
-            Head-to-head comparisons
-          </h2>
-          <ul className="flex flex-wrap gap-2 p-0">
-            {comparisonsForModel(row.provider, row.model_id).map((pair) => (
-              <li key={pair.slug} className="list-none">
-                <Link
-                  href={`/compare/${pair.slug}`}
-                  className="inline-block rounded-full border border-neutral-200 bg-white px-3.5 py-1.5 text-[13px] font-medium text-neutral-700 hover:border-emerald-600 hover:text-emerald-700"
-                >
-                  {pair.slug.replace('-vs-', ' vs ')}
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
+      <section className="mb-8">
+        <h2 className="mb-3 text-xl font-semibold tracking-tight text-neutral-950">
+          Head-to-head comparisons
+        </h2>
+        <ul className="flex flex-wrap gap-2 p-0">
+          {/* Prefilled with this model, so the picker opens on the comparison
+              the reader is already halfway through making. */}
+          <li className="list-none">
+            <Link
+              href={compareHref([modelKey(row)])}
+              className="inline-block rounded-full border border-emerald-600 bg-emerald-50 px-3.5 py-1.5 text-[13px] font-semibold text-emerald-700 hover:bg-emerald-100"
+            >
+              Compare {row.display_name} with another model →
+            </Link>
+          </li>
+          {comparisonsForModel(row.provider, row.model_id).map((pair) => (
+            <li key={pair.slug} className="list-none">
+              <Link
+                href={`/compare/${pair.slug}`}
+                className="inline-block rounded-full border border-neutral-200 bg-white px-3.5 py-1.5 text-[13px] font-medium text-neutral-700 hover:border-emerald-600 hover:text-emerald-700"
+              >
+                {pair.slug.replace('-vs-', ' vs ')}
+              </Link>
+            </li>
+          ))}
+        </ul>
+      </section>
 
       {siblings.length > 1 && (
         <section className="mb-8">
@@ -304,7 +346,9 @@ export default async function ModelPage({
                     className="inline-block rounded-full border border-neutral-200 bg-white px-3.5 py-1.5 text-[13px] text-neutral-700 hover:border-emerald-600 hover:text-emerald-700"
                   >
                     {sibling.display_name}{' '}
-                    <span className="tabular-nums text-neutral-500">{formatPrice(sibling.input)}</span>
+                    <span className="tabular-nums text-neutral-500">
+                      {formatPrice(sibling.input)}
+                    </span>
                   </Link>
                 </li>
               ))}
@@ -351,9 +395,7 @@ function buildFaqs(
       answer: `${row.display_name} costs ${priceText(row.input)} per 1M input tokens and ${priceText(
         row.output,
       )} per 1M output tokens on the standard tier.${
-        row.cached_input !== null
-          ? ` Cached input is ${priceText(row.cached_input)} per 1M.`
-          : ''
+        row.cached_input !== null ? ` Cached input is ${priceText(row.cached_input)} per 1M.` : ''
       }`,
     },
     {

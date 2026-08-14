@@ -9,7 +9,7 @@ export const dynamic = 'force-dynamic'
  *
  * Query params:
  *   provider   repeatable, or comma-separated  (?provider=openai,anthropic)
- *   modality   text | vision | audio | video | image
+ *   modality   text | vision | audio | video | image (unreliable — see docs)
  *   tag        flagship | fast | reasoning | ...
  *   q          substring match on model id or display name
  *   min_input, max_input, min_context

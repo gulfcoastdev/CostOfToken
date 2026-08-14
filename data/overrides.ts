@@ -17,6 +17,8 @@ export interface ModelOverride {
   context_window?: number
   max_output_tokens?: number
   long_context_threshold?: number
+  /** Replaces whatever prose extraction found. Write it as a fact, not a pitch. */
+  description?: string
   modality?: Modality[]
   tags?: string[]
   is_active?: boolean

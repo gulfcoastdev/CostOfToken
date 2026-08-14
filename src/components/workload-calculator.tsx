@@ -7,6 +7,13 @@ import { formatContext } from '@/lib/format.ts'
 import { modelPath } from '@/lib/seo.ts'
 import type { PriceRowV1 } from '@/lib/types.ts'
 import { providerColor, SOURCE_LABELS } from './provider-colors.ts'
+import {
+  compareNullableNumbers,
+  compareText,
+  SortHeader,
+  useSortState,
+  type SortDirection,
+} from './sort-header.tsx'
 
 /**
  * Rank every model by what a specific workload would actually cost.
@@ -67,6 +74,20 @@ export const PRESETS: WorkloadPreset[] = [
     cachedShare: 0.1,
   },
 ]
+
+/**
+ * `perRequest` is a separate key from `cost` even though it orders identically
+ * — per-request cost is monthly divided by a constant. Sharing one key would
+ * light the sort arrow on two headings at once, which reads as a bug.
+ */
+type RankKey = 'cost' | 'perRequest' | 'model' | 'provider' | 'context'
+
+function rankDirection(key: RankKey): SortDirection {
+  // Cheapest first, biggest context first: each column's most useful answer.
+  return key === 'context' ? 'desc' : 'asc'
+}
+
+const RANK_TH = 'px-3 py-2.5'
 
 function clampNumber(value: string, fallback: number): number {
   const parsed = Number(value.replace(/[^0-9.]/g, ''))
@@ -130,9 +151,34 @@ export function WorkloadCalculator({ rows }: { rows: PriceRowV1[] }) {
     [rows, inputTokens, outputTokens, requests, cachedShare],
   )
 
+  // Computed from the ranked list, not the displayed one, so re-sorting the
+  // table by name does not change which model the summary calls cheapest.
   const usable = paid.filter((entry) => entry.fitsContext)
   const cheapest = usable[0]
   const priciest = usable.at(-1)
+
+  const sort = useSortState<RankKey>('cost', rankDirection)
+  const { key: sortKey, direction } = sort
+
+  const ranked = useMemo(() => {
+    const list = [...paid]
+    list.sort((a, b) => {
+      switch (sortKey) {
+        case 'model':
+          return compareText(a.row.display_name, b.row.display_name, direction)
+        case 'provider':
+          return (
+            compareText(a.row.provider_name, b.row.provider_name, direction) ||
+            compareNullableNumbers(a.monthly, b.monthly, 'asc')
+          )
+        case 'context':
+          return compareNullableNumbers(a.row.context_window, b.row.context_window, direction)
+        default:
+          return compareNullableNumbers(a.monthly, b.monthly, direction)
+      }
+    })
+    return list
+  }, [paid, sortKey, direction])
 
   return (
     <>
@@ -207,8 +253,8 @@ export function WorkloadCalculator({ rows }: { rows: PriceRowV1[] }) {
               className="mt-3 w-full accent-emerald-600"
             />
             <p className="m-0 mt-1 text-[12px] leading-snug text-neutral-500">
-              Share of the prompt that repeats between calls. Usually the single
-              largest saving available.
+              Share of the prompt that repeats between calls. Usually the single largest saving
+              available.
             </p>
           </div>
         </div>
@@ -267,23 +313,44 @@ export function WorkloadCalculator({ rows }: { rows: PriceRowV1[] }) {
         <p className="mb-3 text-[13px] text-neutral-500">
           {usable.length} paid models priced for {requests.toLocaleString('en-US')} requests of{' '}
           {inputTokens.toLocaleString('en-US')} in / {outputTokens.toLocaleString('en-US')} out.
+          Click any column heading to re-sort.
         </p>
 
         <div className="overflow-x-auto rounded-xl border border-neutral-200 bg-white">
           <table className="w-full min-w-[720px] border-collapse text-sm">
             <caption className="sr-only">Models ranked by estimated monthly cost</caption>
             <thead>
-              <tr className="border-b border-neutral-200 text-left text-xs font-semibold text-neutral-500">
-                <th scope="col" className="px-3 py-2.5">#</th>
-                <th scope="col" className="px-3 py-2.5">Model</th>
-                <th scope="col" className="px-3 py-2.5">Provider</th>
-                <th scope="col" className="px-3 py-2.5 text-right">Per request</th>
-                <th scope="col" className="px-3 py-2.5 text-right">Per month</th>
-                <th scope="col" className="px-3 py-2.5 text-right">Context</th>
+              <tr className="border-b border-neutral-200 text-xs font-semibold text-neutral-500">
+                <th scope="col" className="px-3 py-2.5 text-left">
+                  #
+                </th>
+                <SortHeader column="model" label="Model" sort={sort} className={RANK_TH} />
+                <SortHeader column="provider" label="Provider" sort={sort} className={RANK_TH} />
+                <SortHeader
+                  column="perRequest"
+                  label="Per request"
+                  sort={sort}
+                  numeric
+                  className={RANK_TH}
+                />
+                <SortHeader
+                  column="cost"
+                  label="Per month"
+                  sort={sort}
+                  numeric
+                  className={RANK_TH}
+                />
+                <SortHeader
+                  column="context"
+                  label="Context"
+                  sort={sort}
+                  numeric
+                  className={RANK_TH}
+                />
               </tr>
             </thead>
             <tbody>
-              {paid.map((entry, index) => (
+              {ranked.map((entry, index) => (
                 <tr
                   key={`${entry.row.provider}/${entry.row.model_id}`}
                   className={`border-b border-neutral-100 last:border-0 ${

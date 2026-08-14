@@ -3,11 +3,19 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { Breadcrumbs, JsonLd, PageShell, SiteFooter } from '@/components/site-chrome.tsx'
 import { providerColor, SOURCE_LABELS } from '@/components/provider-colors.ts'
-import { estimateCost, formatCostShort } from '@/lib/cost.ts'
+import { compareHref, modelKey } from '@/lib/compare.ts'
+import { COMPARISON_SCENARIOS, formatCostShort, scenarioCost } from '@/lib/cost.ts'
 import { formatContext, formatPrice } from '@/lib/format.ts'
 import { getBrand } from '@/lib/provider-brands.ts'
 import { getModelForProvider } from '@/lib/queries.ts'
-import { absoluteUrl, breadcrumbSchema, faqSchema, modelPath, priceText, providerPath } from '@/lib/seo.ts'
+import {
+  absoluteUrl,
+  breadcrumbSchema,
+  faqSchema,
+  modelPath,
+  priceText,
+  providerPath,
+} from '@/lib/seo.ts'
 import type { PriceRowV1 } from '@/lib/types.ts'
 import { COMPARISONS, findComparison } from '../../../../data/comparisons.ts'
 
@@ -25,25 +33,6 @@ export const revalidate = 3600
 
 export function generateStaticParams() {
   return COMPARISONS.map((pair) => ({ pair: pair.slug }))
-}
-
-/** Workloads used to show where each model is actually cheaper. */
-const SCENARIOS = [
-  { label: 'Chat assistant', input: 1_500, output: 600, requests: 100_000 },
-  { label: 'RAG / document Q&A', input: 20_000, output: 500, requests: 30_000 },
-  { label: 'Coding agent', input: 30_000, output: 4_000, requests: 20_000 },
-]
-
-/** Shared with the calculator, so both price a workload the same way. */
-function monthlyCost(row: PriceRowV1, input: number, output: number, requests: number): number | null {
-  return estimateCost(row, {
-    inputTokens: input,
-    outputTokens: output,
-    requestsPerMonth: requests,
-    // These scenarios quote list price without caching, so the saving is
-    // stated separately rather than baked into the comparison.
-    cachedShare: 0,
-  }).monthly
 }
 
 async function load(slug: string) {
@@ -107,10 +96,11 @@ export default async function ComparePage({ params }: { params: Promise<{ pair: 
   const brandA = getBrand(a.provider)?.brand ?? a.provider_name
   const brandB = getBrand(b.provider)?.brand ?? b.provider_name
 
-  const scenarios = SCENARIOS.map((scenario) => {
-    const costA = monthlyCost(a, scenario.input, scenario.output, scenario.requests)
-    const costB = monthlyCost(b, scenario.input, scenario.output, scenario.requests)
-    const winner = costA === null || costB === null ? null : costA < costB ? 'a' : costB < costA ? 'b' : 'tie'
+  const scenarios = COMPARISON_SCENARIOS.map((scenario) => {
+    const costA = scenarioCost(a, scenario)
+    const costB = scenarioCost(b, scenario)
+    const winner =
+      costA === null || costB === null ? null : costA < costB ? 'a' : costB < costA ? 'b' : 'tie'
     const ratio =
       costA !== null && costB !== null && Math.min(costA, costB) > 0
         ? Math.max(costA, costB) / Math.min(costA, costB)
@@ -119,7 +109,8 @@ export default async function ComparePage({ params }: { params: Promise<{ pair: 
   })
 
   const cheaperInput = a.input !== null && b.input !== null ? (a.input < b.input ? a : b) : null
-  const cheaperOutput = a.output !== null && b.output !== null ? (a.output < b.output ? a : b) : null
+  const cheaperOutput =
+    a.output !== null && b.output !== null ? (a.output < b.output ? a : b) : null
   const biggerContext =
     a.context_window !== null && b.context_window !== null
       ? a.context_window > b.context_window
@@ -131,17 +122,25 @@ export default async function ComparePage({ params }: { params: Promise<{ pair: 
     {
       question: `Is ${a.display_name} or ${b.display_name} cheaper?`,
       answer: `It depends on the shape of your requests. ${
-        cheaperInput ? `${cheaperInput.display_name} has the lower input price (${priceText(cheaperInput.input)} per 1M). ` : ''
+        cheaperInput
+          ? `${cheaperInput.display_name} has the lower input price (${priceText(cheaperInput.input)} per 1M). `
+          : ''
       }${
-        cheaperOutput ? `${cheaperOutput.display_name} has the lower output price (${priceText(cheaperOutput.output)} per 1M). ` : ''
+        cheaperOutput
+          ? `${cheaperOutput.display_name} has the lower output price (${priceText(cheaperOutput.output)} per 1M). `
+          : ''
       }Because output usually costs several times more than input, the cheaper choice flips depending on how much text you generate.`,
     },
     {
       question: `What is the context window on ${a.display_name} and ${b.display_name}?`,
       answer: `${a.display_name} accepts ${
-        a.context_window ? `${a.context_window.toLocaleString('en-US')} tokens` : 'an unpublished number of tokens'
+        a.context_window
+          ? `${a.context_window.toLocaleString('en-US')} tokens`
+          : 'an unpublished number of tokens'
       } and ${b.display_name} accepts ${
-        b.context_window ? `${b.context_window.toLocaleString('en-US')} tokens` : 'an unpublished number of tokens'
+        b.context_window
+          ? `${b.context_window.toLocaleString('en-US')} tokens`
+          : 'an unpublished number of tokens'
       }.${biggerContext ? ` ${biggerContext.display_name} holds more.` : ''}`,
     },
     {
@@ -220,10 +219,7 @@ export default async function ComparePage({ params }: { params: Promise<{ pair: 
               <Row label="Cached input / 1M" value={formatPrice(row.cached_input)} />
               <Row label="Output / 1M" value={formatPrice(row.output)} />
               <Row label="Context window" value={formatContext(row.context_window)} />
-              <Row
-                label="Source"
-                value={SOURCE_LABELS[row.source_kind] ?? row.source_kind}
-              />
+              <Row label="Source" value={SOURCE_LABELS[row.source_kind] ?? row.source_kind} />
             </dl>
           </div>
         ))}
@@ -244,10 +240,18 @@ export default async function ComparePage({ params }: { params: Promise<{ pair: 
             </caption>
             <thead>
               <tr className="border-b border-neutral-200 text-left text-xs font-semibold text-neutral-500">
-                <th scope="col" className="px-4 py-2.5">Workload</th>
-                <th scope="col" className="px-4 py-2.5 text-right">{a.display_name}</th>
-                <th scope="col" className="px-4 py-2.5 text-right">{b.display_name}</th>
-                <th scope="col" className="px-4 py-2.5">Cheaper</th>
+                <th scope="col" className="px-4 py-2.5">
+                  Workload
+                </th>
+                <th scope="col" className="px-4 py-2.5 text-right">
+                  {a.display_name}
+                </th>
+                <th scope="col" className="px-4 py-2.5 text-right">
+                  {b.display_name}
+                </th>
+                <th scope="col" className="px-4 py-2.5">
+                  Cheaper
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -263,14 +267,18 @@ export default async function ComparePage({ params }: { params: Promise<{ pair: 
                   </th>
                   <td
                     className={`px-4 py-3 text-right tabular-nums ${
-                      scenario.winner === 'a' ? 'font-semibold text-emerald-700' : 'text-neutral-700'
+                      scenario.winner === 'a'
+                        ? 'font-semibold text-emerald-700'
+                        : 'text-neutral-700'
                     }`}
                   >
                     {formatCostShort(scenario.costA)}
                   </td>
                   <td
                     className={`px-4 py-3 text-right tabular-nums ${
-                      scenario.winner === 'b' ? 'font-semibold text-emerald-700' : 'text-neutral-700'
+                      scenario.winner === 'b'
+                        ? 'font-semibold text-emerald-700'
+                        : 'text-neutral-700'
                     }`}
                   >
                     {formatCostShort(scenario.costB)}
@@ -301,15 +309,28 @@ export default async function ComparePage({ params }: { params: Promise<{ pair: 
         </h2>
         <dl className="space-y-3">
           {faqs.map((faq) => (
-            <div key={faq.question} className="rounded-xl border border-neutral-200 bg-white px-5 py-4">
+            <div
+              key={faq.question}
+              className="rounded-xl border border-neutral-200 bg-white px-5 py-4"
+            >
               <dt className="font-semibold text-neutral-900">{faq.question}</dt>
-              <dd className="m-0 mt-1.5 text-[15px] leading-relaxed text-neutral-700">{faq.answer}</dd>
+              <dd className="m-0 mt-1.5 text-[15px] leading-relaxed text-neutral-700">
+                {faq.answer}
+              </dd>
             </div>
           ))}
         </dl>
       </section>
 
       <section className="mb-8 flex flex-wrap gap-2">
+        {/* Prefilled with both models, so a reader who wants a third can add
+            one rather than start over. */}
+        <Link
+          href={compareHref([modelKey(a), modelKey(b)])}
+          className="rounded-full border border-emerald-600 bg-emerald-50 px-3.5 py-1.5 text-[13px] font-semibold text-emerald-700 hover:bg-emerald-100"
+        >
+          Add a third model to this comparison
+        </Link>
         <Link
           href={providerPath(a.provider)}
           className="rounded-full border border-neutral-200 bg-white px-3.5 py-1.5 text-[13px] font-medium text-neutral-700 hover:border-emerald-600 hover:text-emerald-700"

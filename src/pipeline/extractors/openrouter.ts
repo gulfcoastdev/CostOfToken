@@ -1,5 +1,5 @@
 import type { Modality, NormalizedModel } from '@/lib/types.ts'
-import { inferTags } from '../normalize.ts'
+import { cleanDescription, inferTags } from '../normalize.ts'
 import type { Extractor, ExtractorContext } from './types.ts'
 
 const SOURCE_URL = 'https://openrouter.ai/api/v1/models'
@@ -19,6 +19,7 @@ const SOURCE_URL = 'https://openrouter.ai/api/v1/models'
 interface OpenRouterModel {
   id: string
   name?: string
+  description?: string | null
   context_length?: number | null
   architecture?: { input_modalities?: string[]; output_modalities?: string[] }
   top_provider?: { max_completion_tokens?: number | null }
@@ -83,12 +84,15 @@ export function createOpenRouterExtractor(providerSlug: string, vendors: string[
 
         const modality = toModalities(entry.architecture)
         const tags = new Set(inferTags(modelId, entry.name))
+        // The catalogue states which inputs a model accepts, so the vision tag
+        // here is declared rather than guessed from the name.
         if (modality.includes('vision')) tags.add('vision')
 
         models.set(modelId, {
           providerSlug,
           modelId,
           displayName: entry.name?.replace(/^[^:]+:\s*/, '') || modelId,
+          description: cleanDescription(entry.description),
           contextWindow: entry.context_length ?? null,
           maxOutputTokens: entry.top_provider?.max_completion_tokens ?? null,
           longContextThreshold: null,
@@ -125,6 +129,7 @@ function perTokenToPerMillion(value: string | undefined): number | null {
   return Math.round(numeric * 1_000_000 * 1e6) / 1e6
 }
 
+/** Declared by the catalogue, unlike the name-based inference used elsewhere. */
 function toModalities(architecture: OpenRouterModel['architecture']): Modality[] {
   const all = [
     ...(architecture?.input_modalities ?? []),

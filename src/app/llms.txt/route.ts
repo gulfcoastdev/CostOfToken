@@ -63,6 +63,11 @@ vendor's batch rate against another's standard rate would make the table wrong.
 The JSON API is free and needs no signup. It is rate limited to 60 requests
 per hour per IP.
 
+## Tools
+
+- [Compare models side by side](${absoluteUrl('/compare')}): up to three models, with estimated monthly cost per workload
+- [Workload calculator](${absoluteUrl('/calculator')}): every model ranked by what a specific request mix would cost
+
 ## Pricing by provider
 
 ${providerLines.join('\n')}

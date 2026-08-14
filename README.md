@@ -396,10 +396,12 @@ Built from the design prototype in [`UIDesign/`](UIDesign/). The page is a
 Server Component that reads Postgres directly and hands the full set to a
 client component, so every filter and sort is instant with no round trip.
 
-- Provider chips, search, Flagship / Under $1 / 1M+ context toggles, modality
-  filter, five sort orders
-- Row expands to long-context pricing, source link, API id, tags, and a price
-  sparkline
+- Provider chips, search, Flagship / Under $1 / 1M+ context toggles, and
+  sortable column headings (also reachable from a sort dropdown, which is the
+  card view's only sort control)
+- A checkbox per row ticks up to three models into `/compare`
+- Row expands to the model's description, long-context pricing, source link,
+  API id, tags, and a price sparkline
 - Filter state is mirrored into the URL, so Copy link / Share reproduce the view
 
 ### Popular models panel

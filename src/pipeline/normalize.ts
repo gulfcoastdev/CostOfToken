@@ -151,7 +151,14 @@ export function inferTags(...sources: Array<string | null | undefined>): string[
   return [...tags].sort()
 }
 
-/** Best-effort modality from a model's name and description. */
+/**
+ * Best-effort modality from a model's name and description.
+ *
+ * Known to be unreliable — a name is thin evidence for what a model accepts,
+ * and this mislabels enough models that nothing in the UI shows the result.
+ * Kept so the column keeps a value while a source that actually declares
+ * modalities is found.
+ */
 export function inferModality(...sources: Array<string | null | undefined>): Modality[] {
   const haystack = sources.filter(Boolean).join(' ').toLowerCase()
   const modality = new Set<Modality>(['text'])
@@ -160,6 +167,44 @@ export function inferModality(...sources: Array<string | null | undefined>): Mod
   if (/\b(video)\b/.test(haystack)) modality.add('video')
   if (/\b(image generation|imagen|image out)\b/.test(haystack)) modality.add('image')
   return [...modality]
+}
+
+/**
+ * Tidy a description into something worth showing.
+ *
+ * Catalogue descriptions arrive with markdown links, newlines and — in
+ * OpenRouter's list endpoint — a hard truncation mid-sentence ending in "...".
+ * Rather than print a dangling clause, the text is cut back to the last
+ * complete sentence that fits. An empty result is returned as null, because a
+ * description that says nothing should be absent rather than blank.
+ */
+export function cleanDescription(input: string | null | undefined, limit = 320): string | null {
+  if (!input) return null
+
+  const text = cleanText(
+    input
+      // Markdown links keep their label and lose the URL, which is noise here.
+      .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
+      .replace(/[*_`#>]/g, ' '),
+  )
+  if (!text) return null
+
+  if (text.length <= limit && !/\.{3}$|…$/.test(text)) return text
+
+  const candidate = text.slice(0, limit)
+  // Prefer a sentence boundary, then a word boundary, then a hard cut.
+  const lastSentence = Math.max(
+    candidate.lastIndexOf('. '),
+    candidate.lastIndexOf('! '),
+    candidate.lastIndexOf('? '),
+  )
+  if (lastSentence > limit / 3) return candidate.slice(0, lastSentence + 1).trim()
+
+  const lastSpace = candidate.lastIndexOf(' ')
+  const trimmed = (lastSpace > limit / 3 ? candidate.slice(0, lastSpace) : candidate)
+    .replace(/[\s.,;:—-]+$/, '')
+    .trim()
+  return trimmed ? `${trimmed}…` : null
 }
 
 /** Collapse whitespace and strip footnote markers from scraped table text. */

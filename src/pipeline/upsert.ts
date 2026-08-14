@@ -76,6 +76,7 @@ export async function upsertProviderModels(
           context_window: m.contextWindow,
           max_output_tokens: m.maxOutputTokens,
           long_context_threshold: m.longContextThreshold,
+          description: m.description,
           modality: m.modality,
           tags: m.tags,
           is_active: m.isActive,
@@ -88,6 +89,9 @@ export async function upsertProviderModels(
         context_window         = coalesce(excluded.context_window, models.context_window),
         max_output_tokens      = coalesce(excluded.max_output_tokens, models.max_output_tokens),
         long_context_threshold = coalesce(excluded.long_context_threshold, models.long_context_threshold),
+        -- Same rule as the context window: a run that could not find prose
+        -- must not erase prose an earlier run did find.
+        description            = coalesce(excluded.description, models.description),
         modality               = excluded.modality,
         tags                   = excluded.tags,
         is_active              = excluded.is_active

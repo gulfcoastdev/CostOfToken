@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   blendedPrice,
@@ -9,11 +10,20 @@ import {
   formatPrice,
   formatRelativeTime,
 } from '@/lib/format.ts'
+import { compareHref, MAX_COMPARED, modelKey } from '@/lib/compare.ts'
 import type { PriceRowV1 } from '@/lib/types.ts'
 import { DEFAULT_FEATURED_MODEL_IDS, MAX_FEATURED } from '../../data/featured.ts'
 import { FeaturedModels } from './featured-models.tsx'
 import { ModelCard, ModelDetails, StarButton } from './model-card.tsx'
 import { providerColor, SOURCE_LABELS } from './provider-colors.ts'
+import {
+  compareNullableNumbers,
+  compareText,
+  SortHeader,
+  useSortState,
+  type SortDirection,
+  type SortState,
+} from './sort-header.tsx'
 import { TrendChart } from './sparkline.tsx'
 
 export interface ExplorerRow extends PriceRowV1 {
@@ -60,22 +70,37 @@ export interface InitialFilters {
   flagship: boolean
   under1: boolean
   million: boolean
-  modality: string
   search: string
   sort: SortKey
+  direction: SortDirection
   /** Pinned model ids from the URL, or null to fall back to storage/defaults. */
   pins: string[] | null
 }
 
-type SortKey = 'value' | 'input' | 'output' | 'context' | 'provider'
+/**
+ * `value` is the blended-price ranking the page opens on, and is what the
+ * Blended column sorts by — one key rather than two, so the column and the
+ * dropdown can never disagree about what "best value" means.
+ */
+type SortKey = 'value' | 'model' | 'provider' | 'input' | 'cached' | 'output' | 'context'
 
 const SORT_LABELS: Array<{ value: SortKey; label: string }> = [
   { value: 'value', label: 'Sort: Best value' },
   { value: 'input', label: 'Sort: Lowest input' },
+  { value: 'cached', label: 'Sort: Lowest cached' },
   { value: 'output', label: 'Sort: Lowest output' },
   { value: 'context', label: 'Sort: Largest context' },
+  { value: 'model', label: 'Sort: Model A–Z' },
   { value: 'provider', label: 'Sort: Provider A–Z' },
 ]
+
+/**
+ * Which way a column sorts on its first click. Prices are most useful
+ * cheapest-first; a context window is most useful largest-first.
+ */
+function defaultDirection(key: SortKey): SortDirection {
+  return key === 'context' ? 'desc' : 'asc'
+}
 
 /** Approximate token counts, for illustrating what an average prompt costs. */
 const FUN_ITEMS = [
@@ -84,8 +109,7 @@ const FUN_ITEMS = [
   { label: 'All of English Wikipedia', tokens: 6_400_000_000 },
 ]
 
-const MODALITIES = ['text', 'vision', 'audio', 'video', 'image']
-const SORT_KEYS: SortKey[] = ['value', 'input', 'output', 'context', 'provider']
+const SORT_KEYS: SortKey[] = SORT_LABELS.map((option) => option.value)
 
 /**
  * Read filter state from the URL.
@@ -101,17 +125,18 @@ function readUrlFilters(providerSlugs: string[]): InitialFilters {
     flagship: false,
     under1: false,
     million: false,
-    modality: '',
     search: '',
     sort: 'value',
+    direction: 'asc',
     pins: null,
   }
   if (typeof window === 'undefined') return empty
 
   const params = new URLSearchParams(window.location.search)
   const known = new Set(providerSlugs)
-  const modality = (params.get('modality') ?? '').toLowerCase()
   const sort = params.get('sort') as SortKey | null
+  const validSort = sort && SORT_KEYS.includes(sort) ? sort : 'value'
+  const direction = params.get('dir')
   const rawPins = params.get('pins')
 
   return {
@@ -122,9 +147,10 @@ function readUrlFilters(providerSlugs: string[]): InitialFilters {
     flagship: params.get('flagship') === '1',
     under1: params.get('under1') === '1',
     million: params.get('million') === '1',
-    modality: MODALITIES.includes(modality) ? modality : '',
     search: params.get('q') ?? '',
-    sort: sort && SORT_KEYS.includes(sort) ? sort : 'value',
+    sort: validSort,
+    direction:
+      direction === 'asc' || direction === 'desc' ? direction : defaultDirection(validSort),
     // Absent means no explicit choice, so stored pins still apply. An empty
     // value is a real choice: the sender pinned nothing.
     pins:
@@ -144,9 +170,11 @@ export function PriceExplorer({ rows, providers, updatedAt, providerSlugs }: Exp
   const [flagshipOnly, setFlagshipOnly] = useState(false)
   const [under1, setUnder1] = useState(false)
   const [million, setMillion] = useState(false)
-  const [modality, setModality] = useState('')
   const [search, setSearch] = useState('')
-  const [sort, setSort] = useState<SortKey>('value')
+  // Column headers and the sort dropdown drive the same state, so the table
+  // can never show one thing while the control claims another.
+  const sort = useSortState<SortKey>('value', defaultDirection)
+  const { key: sortKey, direction: sortDirection, set: setSort } = sort
   const [urlApplied, setUrlApplied] = useState(false)
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
@@ -162,6 +190,31 @@ export function PriceExplorer({ rows, providers, updatedAt, providerSlugs }: Exp
   const [pins, setPins] = useState<string[] | null>(null)
   const [pinNotice, setPinNotice] = useState<string | null>(null)
 
+  // Models ticked for comparison, as `provider|model_id` — ids repeat across
+  // vendors, so the provider has to be part of the identity.
+  const [compare, setCompare] = useState<string[]>([])
+  const [compareNotice, setCompareNotice] = useState<string | null>(null)
+
+  const toggleCompare = useCallback((key: string) => {
+    setCompare((current) => {
+      if (current.includes(key)) {
+        setCompareNotice(null)
+        return current.filter((entry) => entry !== key)
+      }
+      if (current.length >= MAX_COMPARED) {
+        setCompareNotice(
+          `Comparing is capped at ${MAX_COMPARED} models — untick one to swap it out.`,
+        )
+        window.setTimeout(() => setCompareNotice(null), 2600)
+        return current
+      }
+      setCompareNotice(null)
+      return [...current, key]
+    })
+  }, [])
+
+  const compareSet = useMemo(() => new Set(compare), [compare])
+
   // Apply the URL once, on mount.
   useEffect(() => {
     const fromUrl = readUrlFilters(providerSlugs)
@@ -169,12 +222,11 @@ export function PriceExplorer({ rows, providers, updatedAt, providerSlugs }: Exp
     setFlagshipOnly(fromUrl.flagship)
     setUnder1(fromUrl.under1)
     setMillion(fromUrl.million)
-    setModality(fromUrl.modality)
     setSearch(fromUrl.search)
-    setSort(fromUrl.sort)
+    setSort(fromUrl.sort, fromUrl.direction)
     if (fromUrl.pins !== null) setPins(fromUrl.pins)
     setUrlApplied(true)
-  }, [providerSlugs])
+  }, [providerSlugs, setSort])
 
   // Read stored pins after mount, never during render: localStorage does not
   // exist on the server, so touching it in the initial state would make the
@@ -266,14 +318,16 @@ export function PriceExplorer({ rows, providers, updatedAt, providerSlugs }: Exp
       if (flagshipOnly && !row.tags.includes('flagship')) return false
       if (under1 && !(row.input !== null && row.input < 1)) return false
       if (million && !(row.context_window !== null && row.context_window >= 1_000_000)) return false
-      if (modality && !row.modality.includes(modality)) return false
       if (query) {
-        const haystack = `${row.model_id} ${row.display_name} ${row.provider_name}`.toLowerCase()
+        // Descriptions are searched too: "coding" or "agentic" finds models
+        // whose names say nothing about what they are for.
+        const haystack =
+          `${row.model_id} ${row.display_name} ${row.provider_name} ${row.description ?? ''}`.toLowerCase()
         if (!haystack.includes(query)) return false
       }
       return true
     })
-  }, [rows, selectedProviders, flagshipOnly, under1, million, modality, search])
+  }, [rows, selectedProviders, flagshipOnly, under1, million, search])
 
   // --- ranking ------------------------------------------------------------
   // One blended metric drives both the column and the ranking, so the table
@@ -307,37 +361,34 @@ export function PriceExplorer({ rows, providers, updatedAt, providerSlugs }: Exp
 
   const sorted = useMemo(() => {
     const list = [...scored]
-    const byBlended = (a: (typeof list)[number], b: (typeof list)[number]) =>
-      (a.blended ?? Number.POSITIVE_INFINITY) - (b.blended ?? Number.POSITIVE_INFINITY)
 
-    switch (sort) {
-      case 'input':
-        list.sort(
-          (a, b) =>
-            (a.row.input ?? Number.POSITIVE_INFINITY) - (b.row.input ?? Number.POSITIVE_INFINITY),
-        )
-        break
-      case 'output':
-        list.sort(
-          (a, b) =>
-            (a.row.output ?? Number.POSITIVE_INFINITY) - (b.row.output ?? Number.POSITIVE_INFINITY),
-        )
-        break
-      case 'context':
-        list.sort((a, b) => (b.row.context_window ?? 0) - (a.row.context_window ?? 0))
-        break
-      case 'provider':
-        list.sort(
-          (a, b) =>
-            a.row.provider_name.localeCompare(b.row.provider_name) ||
-            a.row.model_id.localeCompare(b.row.model_id),
-        )
-        break
-      default:
-        list.sort(byBlended)
-    }
+    list.sort((a, b) => {
+      switch (sortKey) {
+        case 'input':
+          return compareNullableNumbers(a.row.input, b.row.input, sortDirection)
+        case 'cached':
+          return compareNullableNumbers(a.row.cached_input, b.row.cached_input, sortDirection)
+        case 'output':
+          return compareNullableNumbers(a.row.output, b.row.output, sortDirection)
+        case 'context':
+          return compareNullableNumbers(a.row.context_window, b.row.context_window, sortDirection)
+        case 'model':
+          return compareText(a.row.display_name, b.row.display_name, sortDirection)
+        case 'provider':
+          return (
+            compareText(a.row.provider_name, b.row.provider_name, sortDirection) ||
+            // Within one provider, cheapest first regardless of direction —
+            // reversing the whole list would otherwise reverse this too, and
+            // "Provider Z–A, most expensive first" is nobody's question.
+            compareNullableNumbers(a.blended, b.blended, 'asc')
+          )
+        default:
+          return compareNullableNumbers(a.blended, b.blended, sortDirection)
+      }
+    })
+
     return list
-  }, [scored, sort])
+  }, [scored, sortKey, sortDirection])
 
   // --- aggregates ---------------------------------------------------------
   const stats = useMemo(() => {
@@ -380,12 +431,14 @@ export function PriceExplorer({ rows, providers, updatedAt, providerSlugs }: Exp
     if (flagshipOnly) params.set('flagship', '1')
     if (under1) params.set('under1', '1')
     if (million) params.set('million', '1')
-    if (modality) params.set('modality', modality)
     if (search.trim()) params.set('q', search.trim())
-    if (sort !== 'value') params.set('sort', sort)
+    if (sortKey !== 'value') params.set('sort', sortKey)
+    // Only when it differs from what the column would pick anyway, so the
+    // common case stays a short, readable link.
+    if (sortDirection !== defaultDirection(sortKey)) params.set('dir', sortDirection)
     if (pins !== null) params.set('pins', pins.join(','))
     return params.toString()
-  }, [selectedProviders, flagshipOnly, under1, million, modality, search, sort, pins])
+  }, [selectedProviders, flagshipOnly, under1, million, search, sortKey, sortDirection, pins])
 
   // Keep the address bar in sync so a reload or a copied URL restores the view.
   useEffect(() => {
@@ -425,17 +478,11 @@ export function PriceExplorer({ rows, providers, updatedAt, providerSlugs }: Exp
     setFlagshipOnly(false)
     setUnder1(false)
     setMillion(false)
-    setModality('')
     setSearch('')
   }
 
   const hasFilters =
-    selectedProviders.length > 0 ||
-    flagshipOnly ||
-    under1 ||
-    million ||
-    modality !== '' ||
-    search !== ''
+    selectedProviders.length > 0 || flagshipOnly || under1 || million || search !== ''
 
   // Shown on the collapsed Filters button, so a filter left on is never
   // invisible. Providers count as one regardless of how many are selected.
@@ -444,7 +491,6 @@ export function PriceExplorer({ rows, providers, updatedAt, providerSlugs }: Exp
     (flagshipOnly ? 1 : 0) +
     (under1 ? 1 : 0) +
     (million ? 1 : 0) +
-    (modality !== '' ? 1 : 0) +
     (search !== '' ? 1 : 0)
 
   const toggleExpanded = useCallback(
@@ -521,8 +567,11 @@ export function PriceExplorer({ rows, providers, updatedAt, providerSlugs }: Exp
           </label>
           <select
             id="sort-order-mobile"
-            value={sort}
-            onChange={(event) => setSort(event.target.value as SortKey)}
+            value={sortKey}
+            onChange={(event) => {
+              const next = event.target.value as SortKey
+              setSort(next, defaultDirection(next))
+            }}
             className="min-h-[44px] flex-1 cursor-pointer rounded-lg border border-neutral-200 bg-white px-2.5 text-sm text-neutral-900"
           >
             {SORT_LABELS.map((option) => (
@@ -592,11 +641,16 @@ export function PriceExplorer({ rows, providers, updatedAt, providerSlugs }: Exp
             <label className="sr-only" htmlFor="sort-order">
               Sort order
             </label>
-            {/* Hidden on phones: the compact bar above already carries sort. */}
+            {/* Hidden on phones: the compact bar above already carries sort.
+                On wider screens the table headings do the same job, but this
+                stays as the only sort control the card view has. */}
             <select
               id="sort-order"
-              value={sort}
-              onChange={(event) => setSort(event.target.value as SortKey)}
+              value={sortKey}
+              onChange={(event) => {
+                const next = event.target.value as SortKey
+                setSort(next, defaultDirection(next))
+              }}
               className="hidden cursor-pointer rounded-lg border border-neutral-200 bg-white px-2.5 py-2 text-sm text-neutral-900 sm:block"
             >
               {SORT_LABELS.map((option) => (
@@ -621,44 +675,13 @@ export function PriceExplorer({ rows, providers, updatedAt, providerSlugs }: Exp
               Share
             </button>
           </div>
-
-          {/*
-            Modality is a row of pills rather than a select. It was the least
-            discoverable control on the page while being one of the few that
-            genuinely narrows 216 models to a useful set.
-          */}
-          <fieldset className="mt-2.5 border-0 p-0">
-            <legend className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-neutral-400">
-              Modality
-            </legend>
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={() => setModality('')}
-                aria-pressed={modality === ''}
-                className={chipClass(modality === '')}
-              >
-                Any
-              </button>
-              {MODALITIES.map((option) => (
-                <button
-                  key={option}
-                  type="button"
-                  onClick={() => setModality(modality === option ? '' : option)}
-                  aria-pressed={modality === option}
-                  className={chipClass(modality === option)}
-                >
-                  {option[0].toUpperCase() + option.slice(1)}
-                </button>
-              ))}
-            </div>
-          </fieldset>
         </div>
       </div>
 
       <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-2">
         <p className="text-[13px] text-neutral-600">
-          Showing {sorted.length} of {rows.length} models · select one for details
+          Showing {sorted.length} of {rows.length} models · select one for details, or tick up to{' '}
+          {MAX_COMPARED} to compare
         </p>
         {hasFilters && (
           <button
@@ -685,6 +708,8 @@ export function PriceExplorer({ rows, providers, updatedAt, providerSlugs }: Exp
               onShowMore={() => setCardLimit((current) => current + CARD_PAGE)}
               pinnedSet={pinnedSet}
               onTogglePin={togglePin}
+              compareSet={compareSet}
+              onToggleCompare={toggleCompare}
               bestValueIds={bestValueIds}
               topValueId={topValueId}
               expandedId={expandedId}
@@ -695,8 +720,11 @@ export function PriceExplorer({ rows, providers, updatedAt, providerSlugs }: Exp
           <div className={view === 'cards' ? 'hidden' : view === 'auto' ? 'hidden sm:block' : ''}>
             <PriceTable
               entries={sorted}
+              sort={sort}
               pinnedSet={pinnedSet}
               onTogglePin={togglePin}
+              compareSet={compareSet}
+              onToggleCompare={toggleCompare}
               bestValueIds={bestValueIds}
               topValueId={topValueId}
               expandedId={expandedId}
@@ -706,12 +734,164 @@ export function PriceExplorer({ rows, providers, updatedAt, providerSlugs }: Exp
         </>
       )}
 
+      <CompareBar
+        keys={compare}
+        rows={rows}
+        notice={compareNotice}
+        onRemove={toggleCompare}
+        onClear={() => {
+          setCompare([])
+          setCompareNotice(null)
+        }}
+      />
+
       <Footer />
     </div>
   )
 }
 
 // ---------------------------------------------------------------------------
+
+/**
+ * A checkbox that adds a model to the comparison.
+ *
+ * Deliberately a real `<input type="checkbox">` rather than a styled button:
+ * ticking rows to compare them is a form interaction people already know, and
+ * a native checkbox gets keyboard support, the right announcement and the
+ * browser's own focus ring for free.
+ */
+function CompareCheckbox({
+  checked,
+  displayName,
+  disabled,
+  onToggle,
+  className = '',
+}: {
+  checked: boolean
+  displayName: string
+  /** True once the cap is reached, for every model not already ticked. */
+  disabled: boolean
+  onToggle: () => void
+  className?: string
+}) {
+  return (
+    <input
+      type="checkbox"
+      checked={checked}
+      disabled={disabled}
+      onChange={onToggle}
+      onClick={(event) => event.stopPropagation()}
+      aria-label={checked ? `Remove ${displayName} from the comparison` : `Compare ${displayName}`}
+      title={
+        disabled
+          ? `Comparing is capped at ${MAX_COMPARED} models`
+          : checked
+            ? 'Remove from comparison'
+            : 'Add to comparison'
+      }
+      className={`h-4 w-4 shrink-0 cursor-pointer accent-emerald-600 disabled:cursor-not-allowed disabled:opacity-40 ${className}`}
+    />
+  )
+}
+
+/**
+ * The selection tray.
+ *
+ * Fixed to the bottom of the viewport rather than sitting under the table: the
+ * table is 200-odd rows and scrolls inside its own container, so a bar in the
+ * document flow would be off-screen exactly when it is needed. It only exists
+ * while something is selected, so it costs nothing the rest of the time.
+ */
+function CompareBar({
+  keys,
+  rows,
+  notice,
+  onRemove,
+  onClear,
+}: {
+  keys: string[]
+  rows: ExplorerRow[]
+  notice: string | null
+  onRemove: (key: string) => void
+  onClear: () => void
+}) {
+  const byKey = useMemo(() => new Map(rows.map((row) => [modelKey(row), row])), [rows])
+  const chosen = keys.map((key) => byKey.get(key)).filter((row): row is ExplorerRow => !!row)
+
+  if (chosen.length === 0 && !notice) return null
+
+  return (
+    <>
+      {/* Reserves the height the fixed bar occupies, so the last table row and
+          the footer stay reachable rather than sitting under it. */}
+      <div aria-hidden className="h-20" />
+      <div
+        role="region"
+        aria-label="Selected models"
+        className="fixed inset-x-0 bottom-0 z-50 border-t border-neutral-200 bg-white/95 px-4 py-3 shadow-[0_-4px_16px_rgba(0,0,0,0.06)] backdrop-blur"
+      >
+        <div className="mx-auto flex max-w-[1120px] flex-wrap items-center gap-2">
+          <span className="text-[13px] font-semibold text-neutral-700">
+            {chosen.length} of {MAX_COMPARED} selected
+          </span>
+
+          {chosen.map((row) => (
+            <span
+              key={modelKey(row)}
+              className="inline-flex items-center gap-1.5 rounded-full border border-emerald-600 bg-emerald-50 py-0.5 pl-2.5 pr-1 text-[12.5px] font-medium text-emerald-800"
+            >
+              <span
+                className="inline-block h-2 w-2 shrink-0 rounded-full"
+                style={{ background: providerColor(row.provider) }}
+              />
+              {row.display_name}
+              <button
+                type="button"
+                onClick={() => onRemove(modelKey(row))}
+                aria-label={`Remove ${row.display_name} from the comparison`}
+                className="inline-flex h-5 w-5 items-center justify-center rounded-full text-emerald-700 hover:bg-emerald-100"
+              >
+                ×
+              </button>
+            </span>
+          ))}
+
+          {notice && (
+            <span role="status" className="text-[12.5px] font-medium text-amber-700">
+              {notice}
+            </span>
+          )}
+
+          <span className="ml-auto flex items-center gap-2">
+            <button
+              type="button"
+              onClick={onClear}
+              className="min-h-9 rounded-lg px-2.5 text-[13px] font-medium text-neutral-600 hover:text-neutral-900"
+            >
+              Clear
+            </button>
+            {/*
+            Disabled below two, because one model side by side with nothing is
+            the model's own page — which is one click away from here anyway.
+          */}
+            {chosen.length >= 2 ? (
+              <Link
+                href={compareHref(keys)}
+                className="inline-flex min-h-9 items-center rounded-lg bg-emerald-600 px-3.5 text-sm font-semibold text-white hover:bg-emerald-700"
+              >
+                Compare {chosen.length} →
+              </Link>
+            ) : (
+              <span className="inline-flex min-h-9 items-center rounded-lg bg-neutral-100 px-3.5 text-sm font-medium text-neutral-500">
+                Pick one more to compare
+              </span>
+            )}
+          </span>
+        </div>
+      </div>
+    </>
+  )
+}
 
 function chipClass(active: boolean): string {
   // min-h-9 on touch, tighter from `sm` up where pointing is precise.
@@ -848,6 +1028,8 @@ function CardList({
   onShowMore,
   pinnedSet,
   onTogglePin,
+  compareSet,
+  onToggleCompare,
   bestValueIds,
   topValueId,
   expandedId,
@@ -858,6 +1040,8 @@ function CardList({
   onShowMore: () => void
   pinnedSet: Set<string>
   onTogglePin: (id: string) => void
+  compareSet: Set<string>
+  onToggleCompare: (key: string) => void
   bestValueIds: Set<string>
   topValueId: string | null
   expandedId: string | null
@@ -876,6 +1060,9 @@ function CardList({
             rank={index + 1}
             pinned={pinnedSet.has(entry.row.model_id)}
             onTogglePin={onTogglePin}
+            compared={compareSet.has(modelKey(entry.row))}
+            compareFull={compareSet.size >= MAX_COMPARED}
+            onToggleCompare={onToggleCompare}
             isBest={bestValueIds.has(entry.row.model_id)}
             isTop={entry.row.model_id === topValueId}
             expanded={expandedId === entry.row.model_id}
@@ -1044,16 +1231,22 @@ interface Entry {
 
 function PriceTable({
   entries,
+  sort,
   pinnedSet,
   onTogglePin,
+  compareSet,
+  onToggleCompare,
   bestValueIds,
   topValueId,
   expandedId,
   onToggle,
 }: {
   entries: Entry[]
+  sort: SortState<SortKey>
   pinnedSet: Set<string>
   onTogglePin: (id: string) => void
+  compareSet: Set<string>
+  onToggleCompare: (key: string) => void
   bestValueIds: Set<string>
   topValueId: string | null
   expandedId: string | null
@@ -1081,31 +1274,62 @@ function PriceTable({
             {/* Rank and Model are pinned as a pair. Widths are fixed here so
                 the second column's offset can't drift, which is what broke the
                 prototype's hard-coded 220px. */}
-            <th scope="col" className={`${TH} sticky left-0 top-0 z-30 w-11`}>
+            <th scope="col" className={`${TH} sticky left-0 top-0 z-30 w-10 text-center`}>
+              <span title={`Tick up to ${MAX_COMPARED} models to compare`}>⇄</span>
+              <span className="sr-only">Select for comparison</span>
+            </th>
+            <th scope="col" className={`${TH} sticky left-10 top-0 z-30 w-11 text-left`}>
               #
             </th>
-            <th scope="col" className={`${TH} sticky left-11 top-0 z-30 min-w-[220px]`}>
-              Model
-            </th>
-            <th scope="col" className={`${TH} top-0 z-20`}>
-              Provider
-            </th>
-            <th scope="col" className={`${TH} top-0 z-20 text-right`}>
-              Input /1M
-            </th>
-            <th scope="col" className={`${TH} top-0 z-20 text-right`}>
-              Cached /1M
-            </th>
-            <th scope="col" className={`${TH} top-0 z-20 text-right`}>
-              Output /1M
-            </th>
-            <th scope="col" className={`${TH} top-0 z-20 text-right`}>
-              Blended /1M
-            </th>
-            <th scope="col" className={`${TH} top-0 z-20 text-right`}>
-              Context
-            </th>
-            <th scope="col" className={`${TH} top-0 z-20 min-w-[160px]`}>
+            <SortHeader
+              column="model"
+              label="Model"
+              sort={sort}
+              className={`${TH} sticky left-[84px] top-0 z-30 min-w-[220px]`}
+            />
+            <SortHeader
+              column="provider"
+              label="Provider"
+              sort={sort}
+              className={`${TH} top-0 z-20`}
+            />
+            <SortHeader
+              column="input"
+              label="Input /1M"
+              sort={sort}
+              numeric
+              className={`${TH} top-0 z-20`}
+            />
+            <SortHeader
+              column="cached"
+              label="Cached /1M"
+              sort={sort}
+              numeric
+              className={`${TH} top-0 z-20`}
+            />
+            <SortHeader
+              column="output"
+              label="Output /1M"
+              sort={sort}
+              numeric
+              className={`${TH} top-0 z-20`}
+            />
+            <SortHeader
+              column="value"
+              label="Blended /1M"
+              sort={sort}
+              numeric
+              title="Sort by blended price — the same ranking as Best value"
+              className={`${TH} top-0 z-20`}
+            />
+            <SortHeader
+              column="context"
+              label="Context"
+              sort={sort}
+              numeric
+              className={`${TH} top-0 z-20`}
+            />
+            <th scope="col" className={`${TH} top-0 z-20 min-w-[160px] text-left`}>
               Notes
             </th>
           </tr>
@@ -1117,6 +1341,9 @@ function PriceTable({
               entry={entry}
               pinned={pinnedSet.has(entry.row.model_id)}
               onTogglePin={onTogglePin}
+              compared={compareSet.has(modelKey(entry.row))}
+              compareFull={compareSet.size >= MAX_COMPARED}
+              onToggleCompare={onToggleCompare}
               rank={index + 1}
               zebra={index % 2 === 1}
               isBest={bestValueIds.has(entry.row.model_id)}
@@ -1131,13 +1358,21 @@ function PriceTable({
   )
 }
 
+/**
+ * Alignment is deliberately absent: sortable headings set their own, and two
+ * competing `text-*` utilities on one element are resolved by stylesheet order
+ * rather than by the order they appear in the class string.
+ */
 const TH =
-  'sticky bg-white px-3 py-2.5 text-left text-xs font-semibold text-neutral-500 whitespace-nowrap border-b border-neutral-200'
+  'sticky bg-white px-3 py-2.5 text-xs font-semibold text-neutral-500 whitespace-nowrap border-b border-neutral-200'
 
 function PriceRow({
   entry,
   pinned,
   onTogglePin,
+  compared,
+  compareFull,
+  onToggleCompare,
   rank,
   zebra,
   isBest,
@@ -1148,6 +1383,9 @@ function PriceRow({
   entry: Entry
   pinned: boolean
   onTogglePin: (id: string) => void
+  compared: boolean
+  compareFull: boolean
+  onToggleCompare: (key: string) => void
   rank: number
   zebra: boolean
   isBest: boolean
@@ -1167,13 +1405,21 @@ function PriceRow({
         className="cursor-pointer border-b border-neutral-100 hover:bg-neutral-50"
         onClick={() => onToggle(row.model_id)}
       >
+        <td style={cellStyle} className="sticky left-0 z-10 px-2 py-2.5 text-center">
+          <CompareCheckbox
+            checked={compared}
+            displayName={row.display_name}
+            disabled={!compared && compareFull}
+            onToggle={() => onToggleCompare(modelKey(row))}
+          />
+        </td>
         <td
           style={cellStyle}
-          className="sticky left-0 z-10 px-3 py-2.5 text-[13px] text-neutral-400"
+          className="sticky left-10 z-10 px-3 py-2.5 text-[13px] text-neutral-400"
         >
           {rank}
         </td>
-        <td style={cellStyle} className="sticky left-11 z-10 px-3 py-2.5">
+        <td style={cellStyle} className="sticky left-[84px] z-10 px-3 py-2.5">
           {/*
             The star stays on the name's first line. Previously the whole row
             was a wrap container, so a long name pushed the star onto a line of
@@ -1244,7 +1490,7 @@ function PriceRow({
 
       {expanded && (
         <tr id={detailId}>
-          <td colSpan={9} className="border-b border-neutral-100 bg-neutral-50 px-4 pb-4 pt-3">
+          <td colSpan={10} className="border-b border-neutral-100 bg-neutral-50 px-4 pb-4 pt-3">
             <ModelDetails row={row} />
           </td>
         </tr>
