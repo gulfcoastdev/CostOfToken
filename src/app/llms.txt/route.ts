@@ -59,6 +59,7 @@ vendor's batch rate against another's standard rate would make the table wrong.
 - [Current prices, JSON](${absoluteUrl('/api/v1/prices')}): the full table as JSON
 - [Provider list, JSON](${absoluteUrl('/api/v1/providers')}): providers and model counts
 - [Price history, JSON](${absoluteUrl('/api/v1/history/{model_id}')}): historical price points for one model
+- [Changelog feed, RSS](${absoluteUrl('/feed.xml')}): new models and price changes as they are recorded, newest first. Filter with \`?provider=\`, \`?type=model_added\` or \`?type=price_change\`
 
 The JSON API is free and needs no signup. It is rate limited to 60 requests
 per hour per IP.

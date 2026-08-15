@@ -322,6 +322,52 @@ public API down with it.
 
 ---
 
+## Changelog feed
+
+`/feed.xml` publishes the site's changelog as RSS 2.0: every model added to the
+catalogue, and every recorded price move.
+
+```
+/feed.xml                          # newest 50 events, both kinds
+/feed.xml?provider=anthropic       # one provider (repeatable or comma-separated)
+/feed.xml?type=price_change        # or type=model_added
+/feed.xml?limit=200                # 1..200, default 50
+```
+
+Nothing new is collected for it. A model appearing is `models.created_at`, and
+a price move is a `price_history` row — and since the history trigger only
+fires when a value actually changed, every row is already a real event rather
+than the residue of a re-scrape.
+
+Three details carry the weight:
+
+- **Each model's first history row is excluded.** That row is written by the
+  same insert that creates the model's price, so publishing it would announce
+  one real event twice — as a new model and as a price change from nothing.
+- **Item `guid`s come from immutable database ids**, never from the model page
+  URL. Readers dedupe on the guid, so using the link would collapse a model's
+  three price changes into one entry, and deriving it from a title or price
+  would re-announce old events every time either was corrected.
+- **Bad parameters return a valid feed, not a `400`.** A reader has nowhere to
+  show an error and will just mark the subscription broken. A genuine failure
+  returns `503`, never an empty `200` — readers treat that as "everything was
+  withdrawn".
+
+Titles are self-contained, because a reader's list view and a chat webhook both
+show the title alone:
+
+```
+New model: Anthropic Claude Opus 5 — $5.00 in / $25.00 out per 1M tokens
+Moonshot AI (Kimi) Kimi K2.6: input up 64% to $0.950, output up 64% to $4.00 per 1M tokens
+```
+
+Discoverable by autodiscovery from any page, from the footer, and from
+`/llms.txt`; `/rss.xml` and `/feed` redirect to it. Design notes and the full
+contract live in
+[`specs/001-model-changelog-feed/`](specs/001-model-changelog-feed/).
+
+---
+
 ## Daily updates
 
 Vercel Cron hits `/api/cron/update-prices` at 06:00 UTC ([`vercel.json`](vercel.json)),

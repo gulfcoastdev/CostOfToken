@@ -9,6 +9,9 @@ const nextConfig: NextConfig = {
       { source: '/api', destination: '/api-docs', permanent: true },
       // The network page became the about page; keep the old URL working.
       { source: '/network', destination: '/about', permanent: true },
+      // The two paths people and readers guess when looking for a feed.
+      { source: '/rss.xml', destination: '/feed.xml', permanent: true },
+      { source: '/feed', destination: '/feed.xml', permanent: true },
     ]
   },
 }

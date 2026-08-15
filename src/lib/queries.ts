@@ -200,6 +200,229 @@ export async function getHistory(modelId: string, limit = 365): Promise<HistoryP
   }))
 }
 
+// ---------------------------------------------------------------------------
+// Feed events — the read model behind /feed.xml
+// ---------------------------------------------------------------------------
+
+export type FeedEventKind = 'model_added' | 'price_change'
+
+export const FEED_EVENT_KINDS: readonly FeedEventKind[] = ['model_added', 'price_change']
+
+export function isFeedEventKind(value: string): value is FeedEventKind {
+  return (FEED_EVENT_KINDS as readonly string[]).includes(value)
+}
+
+/** USD per 1M tokens, standard tier, in the shape the feed renders. */
+export interface FeedPrices {
+  input: number | null
+  cachedInput: number | null
+  output: number | null
+  longInput: number | null
+  longOutput: number | null
+}
+
+export interface FeedEvent {
+  kind: FeedEventKind
+  /**
+   * Unique and stable for the life of the row: the `price_history` id for a
+   * change, the model's uuid for an addition. Feed readers dedupe on the guid
+   * built from this, so it must never be derived from mutable data — a guid
+   * that shifts re-announces an old event to every subscriber.
+   */
+  id: string
+  occurredAt: string
+  provider: string
+  providerName: string
+  modelId: string
+  displayName: string
+  /** Scraped from vendor pages: untrusted, escaped and capped before rendering. */
+  description: string | null
+  contextWindow: number | null
+  currency: string
+  sourceUrl: string | null
+  sourceKind: SourceKind | null
+  /** Values after the event. */
+  prices: FeedPrices
+  /** Values before a change; null for an addition. */
+  previous: FeedPrices | null
+}
+
+export interface FeedFilters {
+  provider?: string[]
+  kind?: FeedEventKind
+  limit: number
+}
+
+interface FeedRecord {
+  kind: FeedEventKind
+  event_id: string
+  occurred_at: Date
+  provider: string
+  provider_name: string
+  model_id: string
+  display_name: string
+  description: string | null
+  context_window: number | null
+  currency: string | null
+  source_url: string | null
+  source_kind: SourceKind | null
+  input_price: number | null
+  cached_input_price: number | null
+  output_price: number | null
+  long_input_price: number | null
+  long_output_price: number | null
+  prev_input_price: number | null
+  prev_cached_input_price: number | null
+  prev_output_price: number | null
+  prev_long_input_price: number | null
+  prev_long_output_price: number | null
+}
+
+/** Cached for the same reason as getProviderModels, and tagged with it. */
+export const getFeedEvents = cachedRead(getFeedEventsUncached, ['feed-events'], {
+  revalidate: 300,
+  tags: ['prices'],
+})
+
+/**
+ * The site's changelog, assembled from what the database already records.
+ *
+ * Two things count as news, and both are already stored. A model appearing is
+ * `models.created_at` — there is no separate announcement to read. A price
+ * moving is a `price_history` row, and since the history trigger only fires
+ * when a value actually changed, every row is a real event rather than the
+ * residue of a re-scrape.
+ */
+async function getFeedEventsUncached(filters: FeedFilters): Promise<FeedEvent[]> {
+  const records = await sql<FeedRecord[]>`
+    with hist as (
+      select h.id, h.model_id, h.recorded_at, h.currency, h.source_url, h.source_kind,
+             h.input_price, h.cached_input_price, h.output_price,
+             h.long_input_price, h.long_output_price,
+             row_number()                     over w as seq,
+             lag(h.input_price)               over w as prev_input_price,
+             lag(h.cached_input_price)        over w as prev_cached_input_price,
+             lag(h.output_price)              over w as prev_output_price,
+             lag(h.long_input_price)          over w as prev_long_input_price,
+             lag(h.long_output_price)         over w as prev_long_output_price
+        from price_history h
+      -- Ordered by (recorded_at, id), not recorded_at alone: one pipeline run
+      -- can write several rows inside the same transaction timestamp, and the
+      -- bigserial id is the only total order available then.
+      window w as (partition by h.model_id order by h.recorded_at asc, h.id asc)
+    ),
+    events as (
+      select 'price_change'::text as kind,
+             h.id::text           as event_id,
+             h.recorded_at        as occurred_at,
+             p.slug               as provider,
+             p.name               as provider_name,
+             m.model_id, m.display_name, m.description, m.context_window,
+             h.currency, h.source_url, h.source_kind,
+             h.input_price, h.cached_input_price, h.output_price,
+             h.long_input_price, h.long_output_price,
+             h.prev_input_price, h.prev_cached_input_price, h.prev_output_price,
+             h.prev_long_input_price, h.prev_long_output_price
+        from hist h
+        join models m    on m.id = h.model_id
+        join providers p on p.id = m.provider_id
+       -- seq > 1 excludes each model's first history row. The history trigger
+       -- fires on insert as well as update, so that row is written by the same
+       -- statement that creates the model's price — publishing it would
+       -- announce one real event twice, as an addition and as a change from
+       -- nothing.
+       where h.seq > 1
+         and (h.input_price        is distinct from h.prev_input_price
+           or h.cached_input_price is distinct from h.prev_cached_input_price
+           or h.output_price       is distinct from h.prev_output_price
+           or h.long_input_price   is distinct from h.prev_long_input_price
+           or h.long_output_price  is distinct from h.prev_long_output_price)
+
+      union all
+
+      -- Launch prices come from the model's first history row where there is
+      -- one, so an addition reports what the model cost when it appeared
+      -- rather than what it costs today.
+      select 'model_added'::text as kind,
+             m.id::text          as event_id,
+             m.created_at        as occurred_at,
+             p.slug              as provider,
+             p.name              as provider_name,
+             m.model_id, m.display_name, m.description, m.context_window,
+             coalesce(launch.currency, pr.currency, 'USD')       as currency,
+             coalesce(launch.source_url, pr.source_url)          as source_url,
+             coalesce(launch.source_kind, pr.source_kind)        as source_kind,
+             coalesce(launch.input_price, pr.input_price)               as input_price,
+             coalesce(launch.cached_input_price, pr.cached_input_price) as cached_input_price,
+             coalesce(launch.output_price, pr.output_price)             as output_price,
+             coalesce(launch.long_input_price, pr.long_input_price)     as long_input_price,
+             coalesce(launch.long_output_price, pr.long_output_price)   as long_output_price,
+             null::numeric as prev_input_price,
+             null::numeric as prev_cached_input_price,
+             null::numeric as prev_output_price,
+             null::numeric as prev_long_input_price,
+             null::numeric as prev_long_output_price
+        from models m
+        join providers p on p.id = m.provider_id
+        left join prices pr on pr.model_id = m.id
+        left join lateral (
+          select ph.currency, ph.source_url, ph.source_kind, ph.input_price,
+                 ph.cached_input_price, ph.output_price, ph.long_input_price,
+                 ph.long_output_price
+            from price_history ph
+           where ph.model_id = m.id
+           order by ph.recorded_at asc, ph.id asc
+           limit 1
+        ) launch on true
+    )
+    select * from events
+     where (${filters.provider?.length ? sql`provider = any(${filters.provider})` : sql`true`})
+       and (${filters.kind ? sql`kind = ${filters.kind}` : sql`true`})
+     -- kind and event_id break ties deterministically. The initial catalog
+     -- import gave hundreds of models an identical created_at, and an order
+     -- that shuffles between fetches makes a reader re-render what it has
+     -- already shown.
+     order by occurred_at desc, kind asc, event_id desc
+     limit ${filters.limit}
+  `
+
+  return records.map(toFeedEvent)
+}
+
+function toFeedEvent(record: FeedRecord): FeedEvent {
+  return {
+    kind: record.kind,
+    id: record.event_id,
+    occurredAt: record.occurred_at.toISOString(),
+    provider: record.provider,
+    providerName: record.provider_name,
+    modelId: record.model_id,
+    displayName: record.display_name,
+    description: record.description ?? null,
+    contextWindow: record.context_window,
+    currency: record.currency ?? 'USD',
+    sourceUrl: record.source_url,
+    sourceKind: record.source_kind,
+    prices: {
+      input: record.input_price,
+      cachedInput: record.cached_input_price,
+      output: record.output_price,
+      longInput: record.long_input_price,
+      longOutput: record.long_output_price,
+    },
+    previous:
+      record.kind === 'price_change'
+        ? {
+            input: record.prev_input_price,
+            cachedInput: record.prev_cached_input_price,
+            output: record.prev_output_price,
+            longInput: record.prev_long_input_price,
+            longOutput: record.prev_long_output_price,
+          }
+        : null,
+  }
+}
+
 export interface PriceTrend {
   /** Evenly spaced input-price samples, oldest first. */
   series: number[]

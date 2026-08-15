@@ -63,6 +63,12 @@ export function SiteFooter() {
         <a href="/llms.txt" className="font-medium underline underline-offset-2 hover:text-neutral-800">
           llms.txt
         </a>
+        <a
+          href="/feed.xml"
+          className="font-medium underline underline-offset-2 hover:text-neutral-800"
+        >
+          Changelog feed
+        </a>
       </nav>
 
       <p className="m-0 max-w-2xl">
