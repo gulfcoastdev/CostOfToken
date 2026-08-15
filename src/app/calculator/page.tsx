@@ -1,6 +1,6 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
-import { Breadcrumbs, JsonLd, PageShell, SiteFooter } from '@/components/site-chrome.tsx'
+import { Breadcrumbs, JsonLd, PageShell } from '@/components/site-chrome.tsx'
 import { WorkloadCalculator } from '@/components/workload-calculator.tsx'
 import { getPrices } from '@/lib/queries.ts'
 import { absoluteUrl, breadcrumbSchema, faqSchema } from '@/lib/seo.ts'
@@ -124,8 +124,6 @@ export default async function CalculatorPage() {
           Compare all {rows.length} models by list price →
         </Link>
       </p>
-
-      <SiteFooter />
     </PageShell>
   )
 }

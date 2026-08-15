@@ -1,7 +1,7 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { CodeBlock } from '@/components/code-block.tsx'
-import { Breadcrumbs, JsonLd, PageShell, SiteFooter } from '@/components/site-chrome.tsx'
+import { Breadcrumbs, JsonLd, PageShell } from '@/components/site-chrome.tsx'
 import { getLastUpdated, getPrices } from '@/lib/queries.ts'
 import { absoluteUrl, breadcrumbSchema, faqSchema, SITE } from '@/lib/seo.ts'
 
@@ -396,8 +396,6 @@ for cost, model in sorted(priced)[:5]:
           Browse pricing by provider →
         </Link>
       </p>
-
-      <SiteFooter />
     </PageShell>
   )
 }

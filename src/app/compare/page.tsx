@@ -1,7 +1,7 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { CompareBuilder } from '@/components/compare-builder.tsx'
-import { Breadcrumbs, JsonLd, PageShell, SiteFooter } from '@/components/site-chrome.tsx'
+import { Breadcrumbs, JsonLd, PageShell } from '@/components/site-chrome.tsx'
 import { MAX_COMPARED } from '@/lib/compare.ts'
 import { getPrices } from '@/lib/queries.ts'
 import { absoluteUrl, breadcrumbSchema, faqSchema } from '@/lib/seo.ts'
@@ -131,8 +131,6 @@ export default async function ComparePage() {
           Price a specific workload across every model →
         </Link>
       </p>
-
-      <SiteFooter />
     </PageShell>
   )
 }

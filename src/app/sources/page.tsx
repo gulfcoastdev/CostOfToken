@@ -1,6 +1,6 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
-import { Breadcrumbs, JsonLd, PageShell, SiteFooter } from '@/components/site-chrome.tsx'
+import { Breadcrumbs, JsonLd, PageShell } from '@/components/site-chrome.tsx'
 import { ALL_EXTRACTORS } from '@/pipeline/extractors/index.ts'
 import { PROVIDER_BY_SLUG } from '@/pipeline/providers.ts'
 import { getBrand } from '@/lib/provider-brands.ts'
@@ -240,8 +240,6 @@ export default async function SourcesPage() {
           Use this data via the API →
         </Link>
       </p>
-
-      <SiteFooter />
     </PageShell>
   )
 }

@@ -1,6 +1,6 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
-import { Breadcrumbs, JsonLd, PageShell, SiteFooter } from '@/components/site-chrome.tsx'
+import { Breadcrumbs, JsonLd, PageShell } from '@/components/site-chrome.tsx'
 import { absoluteUrl, breadcrumbSchema, SITE } from '@/lib/seo.ts'
 
 export const revalidate = 86400
@@ -173,8 +173,6 @@ export default function TermsPage() {
         This page is written in plain language for clarity and is not legal advice. If the service
         starts carrying commercial weight, have a lawyer review it.
       </p>
-
-      <SiteFooter />
     </PageShell>
   )
 }

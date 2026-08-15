@@ -1,7 +1,7 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
-import { Breadcrumbs, JsonLd, PageShell, SiteFooter } from '@/components/site-chrome.tsx'
+import { Breadcrumbs, JsonLd, PageShell } from '@/components/site-chrome.tsx'
 import { providerColor, SOURCE_LABELS } from '@/components/provider-colors.ts'
 import { compareHref, modelKey } from '@/lib/compare.ts'
 import { COMPARISON_SCENARIOS, formatCostShort, scenarioCost } from '@/lib/cost.ts'
@@ -353,8 +353,6 @@ export default async function ComparePage({ params }: { params: Promise<{ pair: 
           </Link>
         ))}
       </section>
-
-      <SiteFooter />
     </PageShell>
   )
 }

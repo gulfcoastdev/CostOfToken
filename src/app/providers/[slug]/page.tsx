@@ -1,7 +1,7 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { notFound, permanentRedirect } from 'next/navigation'
-import { Breadcrumbs, JsonLd, PageShell, PriceStat, SiteFooter } from '@/components/site-chrome.tsx'
+import { Breadcrumbs, JsonLd, PageShell, PriceStat } from '@/components/site-chrome.tsx'
 import { SortablePriceTable } from '@/components/sortable-price-table.tsx'
 import { formatContext, formatPrice } from '@/lib/format.ts'
 import { getBrand, PROVIDER_ALIAS_MAP, PROVIDER_BRANDS } from '@/lib/provider-brands.ts'
@@ -235,8 +235,6 @@ export default async function ProviderPage({ params }: { params: Promise<{ slug:
           })}
         </ul>
       </section>
-
-      <SiteFooter />
     </PageShell>
   )
 }
