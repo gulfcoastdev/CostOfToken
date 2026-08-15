@@ -162,12 +162,29 @@ function describeDelta(delta: PriceDelta): string {
 }
 
 /**
+ * "Anthropic Claude Opus 5", but "MiniMax M3" rather than "MiniMax MiniMax M3".
+ *
+ * A title has to name the vendor, because a model name alone is meaningless to
+ * anyone not already following that vendor. But where the brand *is* the
+ * company name, prefixing repeats it — which is what the first MiniMax import
+ * produced.
+ */
+function qualifiedName(event: FeedEvent): string {
+  const provider = event.providerName.trim()
+  const display = event.displayName.trim()
+
+  return display.toLowerCase().startsWith(provider.toLowerCase())
+    ? display
+    : `${provider} ${display}`
+}
+
+/**
  * The item title, which for most subscribers is the entire notification — a
  * reader's list view and a chat webhook both show the title alone. So it
  * carries provider, model and the actual numbers rather than "price updated".
  */
 export function itemTitle(event: FeedEvent): string {
-  const model = `${event.providerName} ${event.displayName}`
+  const model = qualifiedName(event)
 
   if (event.kind === 'model_added') {
     if (event.prices.input === null && event.prices.output === null) {
@@ -232,7 +249,7 @@ function deltaList(deltas: PriceDelta[]): string {
 /** The item body, as HTML. Every interpolated value is HTML-escaped first. */
 export function itemDescription(event: FeedEvent): string {
   const page = absoluteUrl(modelPath(event.provider, event.modelId))
-  const name = `${escapeHtml(event.providerName)} ${escapeHtml(event.displayName)}`
+  const name = escapeHtml(qualifiedName(event))
   const id = `<code>${escapeHtml(event.modelId)}</code>`
   const blurb = shortDescription(event.description)
 

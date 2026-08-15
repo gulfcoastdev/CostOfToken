@@ -34,6 +34,7 @@ export const FALLBACK_EXTRACTORS: readonly Extractor[] = [
   createOpenRouterExtractor('moonshot', ['moonshotai', 'moonshot']),
   createOpenRouterExtractor('bytedance', ['bytedance', 'doubao']),
   createOpenRouterExtractor('baidu', ['baidu', 'ernie']),
+  createOpenRouterExtractor('minimax', ['minimax']),
 ]
 
 const FIRST_PARTY_SLUGS = new Set(FIRST_PARTY_EXTRACTORS.map((e) => e.providerSlug))

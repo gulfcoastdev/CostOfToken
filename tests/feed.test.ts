@@ -441,3 +441,50 @@ test('a price change is categorised separately from an addition', () => {
   assert.match(xml, /<category>Price change<\/category>/)
   assert.match(xml, /<category>New model<\/category>/)
 })
+
+test('itemTitle does not repeat a provider name the model already carries', () => {
+  // Real output from the MiniMax import: "New model: MiniMax MiniMax M3".
+  // Vendors whose brand is their company name make the naive
+  // `provider + display name` read like a stutter.
+  const event = feedEvent({
+    provider: 'minimax',
+    providerName: 'MiniMax',
+    modelId: 'minimax-m3',
+    displayName: 'MiniMax M3',
+  })
+
+  assert.equal(
+    itemTitle(event),
+    'New model: MiniMax M3 — $5.00 in / $25.00 out per 1M tokens',
+  )
+})
+
+test('itemTitle still names the provider when the model does not', () => {
+  assert.match(itemTitle(feedEvent()), /^New model: Anthropic Claude Opus 5 /)
+})
+
+test('itemTitle drops the repeat for a price change too', () => {
+  const event = priceChangeEvent({
+    provider: 'minimax',
+    providerName: 'MiniMax',
+    modelId: 'minimax-m3',
+    displayName: 'MiniMax M3',
+  })
+
+  assert.ok(itemTitle(event).startsWith('MiniMax M3: input down'), itemTitle(event))
+})
+
+test('itemTitle matches the provider name case-insensitively', () => {
+  const event = feedEvent({ providerName: 'DeepSeek', displayName: 'deepseek v4 pro' })
+
+  assert.match(itemTitle(event), /^New model: deepseek v4 pro /)
+})
+
+test('itemDescription uses the same de-duplicated name as the title', () => {
+  const body = itemDescription(
+    feedEvent({ providerName: 'MiniMax', modelId: 'minimax-m3', displayName: 'MiniMax M3' }),
+  )
+
+  assert.match(body, /<strong>MiniMax M3<\/strong>/)
+  assert.doesNotMatch(body, /MiniMax MiniMax/)
+})
