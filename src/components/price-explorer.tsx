@@ -744,8 +744,6 @@ export function PriceExplorer({ rows, providers, updatedAt, providerSlugs }: Exp
           setCompareNotice(null)
         }}
       />
-
-      <Footer />
     </div>
   )
 }
@@ -1499,32 +1497,12 @@ function PriceRow({
   )
 }
 
-function Footer() {
-  return (
-    <footer className="mt-7 flex flex-wrap items-baseline justify-between gap-4 border-t border-neutral-300 pt-4">
-      <p className="m-0 max-w-xl text-[12.5px] text-neutral-500">
-        Data sources: first-party pricing pages where published, OpenRouter catalogue as fallback
-        (marked <em>Via OpenRouter</em> — a reseller, whose prices can differ from the vendor&apos;s
-        own). Standard tier only; batch and priority tiers are excluded.
-      </p>
-      <p className="m-0 text-[12.5px] text-neutral-500">
-        Public API ·{' '}
-        <code className="rounded bg-neutral-200 px-1.5 py-0.5 text-[11px] text-neutral-700">
-          GET /api/v1/prices
-        </code>
-        <br />
-        <a href="/sources" className="underline underline-offset-2 hover:text-neutral-800">
-          Data sources
-        </a>{' '}
-        ·{' '}
-        <a href="/about" className="underline underline-offset-2 hover:text-neutral-800">
-          About
-        </a>{' '}
-        ·{' '}
-        <a href="/terms" className="underline underline-offset-2 hover:text-neutral-800">
-          Terms
-        </a>
-      </p>
-    </footer>
-  )
-}
+/*
+ * The explorer used to render its own compact footer here.
+ *
+ * It sat directly under the table, which put a footer-styled block in the
+ * middle of the home page — above the provider links and the FAQ — and it
+ * duplicated the collection note and the Sources/About/Terms links that
+ * SiteFooter already carries. The page now ends with the same SiteFooter as
+ * every other route.
+ */
