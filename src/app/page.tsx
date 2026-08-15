@@ -1,7 +1,7 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { PriceExplorer, type ExplorerRow } from '@/components/price-explorer.tsx'
-import { JsonLd } from '@/components/site-chrome.tsx'
+import { JsonLd, SiteFooter } from '@/components/site-chrome.tsx'
 import { getBrand } from '@/lib/provider-brands.ts'
 import { getLastUpdated, getPriceTrends, getPrices, getProviders } from '@/lib/queries.ts'
 import {
@@ -117,6 +117,13 @@ export default async function HomePage() {
       <div className="mx-auto max-w-[1120px] px-5 pb-14">
         <ProviderLinks providers={providers} />
         <HomeFaq />
+        {/*
+          The home page was the one page without a footer, so the site's most
+          visited page was also the only one missing the collection note, the
+          attribution, and the links to /sources, llms.txt and the feed. Same
+          container width as PageShell, so it lines up with every other page.
+        */}
+        <SiteFooter />
       </div>
     </>
   )
