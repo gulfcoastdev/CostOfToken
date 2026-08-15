@@ -83,11 +83,22 @@ export const MODEL_OVERRIDES: ModelOverride[] = [
   { provider: 'google', model_id: 'gemini-3.1-flash-lite-image', model_type: 'image_gen',
     notes: 'ai.google.dev pricing: Flash Lite image generation model.' },
 
-  // glm-ocr is deliberately left unclassified: Zhipu's pricing page is not
-  // machine readable and nothing first-party was found that states whether it
-  // emits text (making it a generator that happens to read images) or is a
-  // pure extraction endpoint. Flagged is the honest answer until someone
-  // checks. It stays reachable under "Needs review".
+  /*
+   * glm-ocr: OCR, decided by the maintainer rather than from a quotable
+   * first-party line — Zhipu's pricing page is not machine readable and states
+   * nothing about what the endpoint emits. Recorded as a judgement call, and
+   * marked as one, so it reads differently from the entries above that quote a
+   * vendor's own page.
+   *
+   * The output price that flagged it is not evidence against OCR. An OCR
+   * endpoint returns the text it read, so billing for output tokens is exactly
+   * what it should do — the rule that treats "has an output price" as a sign of
+   * a generator does not discriminate here, and will flag every future OCR
+   * model the same way. Worth revisiting in the classifier rather than
+   * absorbing one override at a time.
+   */
+  { provider: 'zhipu', model_id: 'glm-ocr', model_type: 'ocr',
+    notes: 'Maintainer decision, not a vendor quote: an OCR endpoint billing output tokens is expected, since it returns the text it read.' },
 
   // Example — delete or replace:
   // {
