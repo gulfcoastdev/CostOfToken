@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import { Analytics } from '@/components/analytics.tsx'
 import { ConsentBanner } from '@/components/consent-banner.tsx'
+import { SiteFooter } from '@/components/site-chrome.tsx'
 import { SiteNav } from '@/components/site-nav.tsx'
 import { SITE, SITE_URL } from '@/lib/seo.ts'
 import './globals.css'
@@ -94,6 +95,20 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         {/* In the layout so every route carries the same navigation. */}
         <SiteNav />
         {children}
+        {/*
+          The footer is here for the same reason the nav is, learned the hard
+          way: it used to be rendered by each page individually, so the home
+          page grew a smaller variant of its own and the error state had none
+          at all — leaving a reader who hit a failed page with no way onward.
+          Rendered once, "every page has exactly one footer" stops depending on
+          each new page remembering to add it.
+
+          It supplies its own container because it no longer sits inside
+          PageShell, which is where it used to inherit its width and padding.
+        */}
+        <div className="mx-auto max-w-[1120px] px-5 pb-14">
+          <SiteFooter />
+        </div>
         <Analytics />
         <ConsentBanner />
       </body>

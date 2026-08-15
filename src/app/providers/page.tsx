@@ -1,6 +1,6 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
-import { Breadcrumbs, JsonLd, PageShell, SiteFooter } from '@/components/site-chrome.tsx'
+import { Breadcrumbs, JsonLd, PageShell } from '@/components/site-chrome.tsx'
 import { formatPrice } from '@/lib/format.ts'
 import { getBrand, PROVIDER_BRANDS } from '@/lib/provider-brands.ts'
 import { getLastUpdated, getPrices } from '@/lib/queries.ts'
@@ -157,8 +157,6 @@ export default async function ProvidersIndexPage() {
           })}
         </ul>
       )}
-
-      <SiteFooter />
     </PageShell>
   )
 }

@@ -1,7 +1,7 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { PriceExplorer, type ExplorerRow } from '@/components/price-explorer.tsx'
-import { JsonLd, SiteFooter } from '@/components/site-chrome.tsx'
+import { JsonLd } from '@/components/site-chrome.tsx'
 import { getBrand } from '@/lib/provider-brands.ts'
 import { getLastUpdated, getPriceTrends, getPrices, getProviders } from '@/lib/queries.ts'
 import {
@@ -123,7 +123,6 @@ export default async function HomePage() {
           attribution, and the links to /sources, llms.txt and the feed. Same
           container width as PageShell, so it lines up with every other page.
         */}
-        <SiteFooter />
       </div>
     </>
   )

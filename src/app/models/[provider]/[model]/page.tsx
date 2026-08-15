@@ -1,7 +1,7 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
-import { Breadcrumbs, JsonLd, PageShell, PriceStat, SiteFooter } from '@/components/site-chrome.tsx'
+import { Breadcrumbs, JsonLd, PageShell, PriceStat } from '@/components/site-chrome.tsx'
 import { compareHref, modelKey } from '@/lib/compare.ts'
 import { formatContext, formatPrice } from '@/lib/format.ts'
 import { getBrand } from '@/lib/provider-brands.ts'
@@ -363,8 +363,6 @@ export default async function ModelPage({
           </p>
         </section>
       )}
-
-      <SiteFooter />
     </PageShell>
   )
 }

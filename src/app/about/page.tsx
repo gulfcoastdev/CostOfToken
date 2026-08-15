@@ -1,6 +1,6 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
-import { Breadcrumbs, JsonLd, PageShell, SiteFooter } from '@/components/site-chrome.tsx'
+import { Breadcrumbs, JsonLd, PageShell } from '@/components/site-chrome.tsx'
 import { getNetworkFeed, NETWORK_HOME } from '@/lib/network.ts'
 import { absoluteUrl, breadcrumbSchema, SITE } from '@/lib/seo.ts'
 
@@ -224,8 +224,6 @@ export default async function NetworkPage() {
           </p>
         </section>
       )}
-
-      <SiteFooter />
     </PageShell>
   )
 }
