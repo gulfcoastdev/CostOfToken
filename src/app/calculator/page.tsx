@@ -56,7 +56,17 @@ const FAQS = [
 export default async function CalculatorPage() {
   let rows: PriceRowV1[] = []
   try {
-    const page = await getPrices({ limit: 500, offset: 0, sort: 'input', direction: 'asc' })
+    /*
+     * Text generators only: the calculator prices a workload of input and
+     * output tokens, which a model that generates no text cannot serve.
+     */
+    const page = await getPrices({
+      limit: 500,
+      offset: 0,
+      sort: 'input',
+      direction: 'asc',
+      modelType: 'general',
+    })
     rows = page.rows
   } catch {
     rows = []

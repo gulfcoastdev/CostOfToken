@@ -20,6 +20,24 @@ import type { HistoryPointV1, PriceRowV1 } from '@/lib/types.ts'
 import { comparisonsForModel } from '../../../../../data/comparisons.ts'
 
 export const revalidate = 3600
+
+const MODEL_TYPE_LABELS: Record<string, string> = {
+  general: 'general-purpose',
+  embedding: 'embedding',
+  moderation: 'moderation',
+  tts: 'text-to-speech',
+  asr: 'speech-to-text',
+  image_gen: 'image generation',
+  video_gen: 'video generation',
+  ocr: 'OCR',
+  realtime: 'realtime audio',
+  other: 'specialised',
+}
+
+/** "an embedding model" rather than "a embedding model". */
+function article(label: string): string {
+  return /^[aeiou]/i.test(label) ? 'an' : 'a'
+}
 /** Unknown model ids render on demand rather than 404ing before the next build. */
 export const dynamicParams = true
 
@@ -171,7 +189,31 @@ export default async function ModelPage({
             'source unavailable'
           )}
           {row.updated_at ? ` · updated ${row.updated_at.slice(0, 10)}` : ''}
+          {row.model_type ? ` · ${MODEL_TYPE_LABELS[row.model_type] ?? row.model_type}` : ''}
         </p>
+
+        {/*
+          Said once, plainly, on any model that is not a text generator. Its
+          per-token figures sit in the same columns as a chat model's but do
+          not mean the same thing — embeddings and moderation models have no
+          output price at all, and image and speech models are frequently
+          billed per image or per second.
+        */}
+        {row.model_type !== null && row.model_type !== 'general' && (
+          <p className="mt-3 max-w-3xl rounded-lg bg-amber-50 px-3 py-2 text-[13px] text-amber-900">
+            This is {article(MODEL_TYPE_LABELS[row.model_type] ?? row.model_type)}{' '}
+            <strong>{MODEL_TYPE_LABELS[row.model_type] ?? row.model_type}</strong> model. Its
+            pricing is not comparable to chat models, and it is excluded from the site&apos;s
+            cheapest-model rankings for that reason.
+          </p>
+        )}
+
+        {row.classification_status === 'needs_review' && (
+          <p className="mt-3 max-w-3xl rounded-lg bg-neutral-100 px-3 py-2 text-[13px] text-neutral-700">
+            We have not confirmed what kind of model this is. Its name suggests one thing and its
+            pricing another, and we would rather say so than guess.
+          </p>
+        )}
       </header>
 
       <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">

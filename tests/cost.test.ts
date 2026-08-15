@@ -22,6 +22,9 @@ function model(overrides: Partial<PriceRowV1> = {}): PriceRowV1 {
     description: null,
     modality: ['text'],
     tags: [],
+    model_type: 'general',
+    classification_status: 'confirmed',
+    capabilities: null,
     source_url: null,
     source_kind: 'scrape',
     updated_at: null,
@@ -115,14 +118,14 @@ test('free models are separated from the paid ranking', () => {
 
 test('unusable models are reported separately from both', () => {
   const rows = [
-    model({ model_id: 'chat' }),
+    model({ model_id: 'general' }),
     model({ model_id: 'embedding', output: null }),
     model({ model_id: 'unpriced', input: null, output: null }),
   ]
 
   const { paid, unusable } = rankByWorkload(rows, workload)
 
-  assert.deepEqual(paid.map((e) => e.row.model_id), ['chat'])
+  assert.deepEqual(paid.map((e) => e.row.model_id), ['general'])
   assert.deepEqual(
     unusable.map((e) => [e.row.model_id, e.unusable]),
     [

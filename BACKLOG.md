@@ -22,6 +22,19 @@ Working roadmap. Ordered by priority, not by effort.
       make the site the one people bookmark, because it answers the question
       the table only approximates.
 
+- [x] **Model type classification** — done.
+      Every model carries a `model_type`; the table and calculator default to
+      chat, so a moderation endpoint is no longer the 4th cheapest model on the
+      site. Rules refuse to guess: a name hint must be corroborated by the
+      pricing shape, or the model is flagged. `npm run classify:review`.
+      *Notes:* 16 of 17 flagged models resolved from first-party sources;
+      `glm-ocr` deliberately still flagged. The public API default is
+      unchanged — type is additive and the filter opt-in.
+      *Next:* capability derivation is deliberately not built. OpenAI states a
+      modality column in its own pricing table and Google describes models in
+      prose; an extractor could capture those as declared evidence instead of
+      relying on the name/price heuristic.
+
 - [x] **Changelog feed (RSS)** — done, `/feed.xml`.
       New models and price changes as they are recorded, filterable by provider
       and event kind. Built through Spec Kit; spec, plan and contract live in
@@ -48,14 +61,59 @@ Working roadmap. Ordered by priority, not by effort.
       showing the `meta.attribution` field in the response so integrators see
       the backlink requirement in the example itself.
 
-- [ ] **Filter by model type (text, vision, audio, …)** — blocked on the data.
-      *Notes:* the modality filter has been **removed from the UI**. Most values
-      were inferred from model names by regex (`inferModality`) and were wrong
-      often enough that filtering on them hid models that did qualify — worse
-      than no filter. The column, the pipeline writes and the API `?modality=`
-      parameter are all still there, so nothing has to be rebuilt; what is
-      needed first is a source that *declares* modalities for every provider,
-      not just OpenRouter and xAI. Re-enable the UI only after that.
+- [x] **Filter by model type** — done, shipped with `model_type`.
+      The table and calculator default to `general`; embeddings, moderation,
+      TTS, ASR, image, video, OCR and realtime models are one control away and
+      labelled as not price-comparable. See "Model types" in the README.
+      *Still open, and deliberately separate:* the **modality** filter remains
+      removed from the UI. Those values were inferred from model names by regex
+      (`inferModality`) and were wrong often enough that filtering on them hid
+      models that did qualify — worse than no filter. `model_type` replaces it
+      for the "what kind of thing is this" question, but per-model
+      *capabilities* (vision, tool use, audio in/out) still need a source that
+      **declares** them. Two candidates found while doing 003: OpenAI states a
+      modality in its own pricing table's second column (`| gpt-image-1 |
+      Image | … |`) and Google describes each model in prose. Capturing those
+      in the extractors would give declared evidence instead of a guess.
+
+- [ ] **Quality leaderboards and rankings** — the missing half of "is it worth
+      it". The site answers what a model costs and says nothing about whether
+      it is any good, so it cannot rank by value, cannot answer "which models
+      are good at coding", and cannot show cost-per-quality — which is the
+      comparison people actually want.
+
+      *Blocked on licensing, not on effort.* Artificial Analysis is out: their
+      free and Pro tiers forbid commercial redistribution. **BenchLM** is the
+      preferred source and its data is exactly the right shape —
+      `GET https://benchlm.ai/api/data/leaderboard?mode=bench-align-v5` returns
+      `overallScore` plus `categoryScores` for agentic, coding, reasoning,
+      multimodalGrounded, knowledge, multilingual, instructionFollowing and
+      math, with `evidenceStatus` and a methodology version.
+
+      But their terms grant only *"read, link to, quote with attribution, and
+      use published downloads **under any license stated with that data**"* —
+      and no licence is stated with the data. The payload carries no licence,
+      terms, copyright or attribution field. Ingesting it nightly and serving
+      it through our own pages and API is closer to republishing a dataset than
+      to quoting, which is the same line Artificial Analysis draws.
+
+      *Resolve one of these before building anything:*
+      - written permission from BenchLM to redistribute with attribution
+      - a stated licence we have not found
+      - a decision to treat it as quoting: prominent per-score credit and link,
+        no exposure through `/api/v1`, no bulk re-export
+      - a different source — Arena Elo via the Hugging Face dataset, which
+        carries an explicit licence
+
+      *Other caveats found:* the free export covers **50 models against our
+      226**, it keys on display names ("Claude Mythos 5") so matching to our
+      `model_id`s is fuzzy work, and **13 of the 50 scores are `estimated`
+      rather than `supported`** — which has to be surfaced, not presented as
+      measured.
+
+      *Design note:* build against a source-agnostic interface so the ranking
+      feature does not hard-code one vendor. Scores are only comparable within
+      a `model_type`, so 003 is a prerequisite and is now done.
 
 - [x] **Build-your-own comparison** — done. `/compare` takes up to three models,
       shows specs side by side and prices them against three workloads. Ticking

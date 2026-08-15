@@ -1,5 +1,6 @@
 import type { NormalizedModel } from '@/lib/types.ts'
 import { MODEL_OVERRIDES, type ModelOverride } from '../../data/overrides.ts'
+import { classifyModel } from './classify.ts'
 import type { ExtractorContext } from './extractors/types.ts'
 import { cleanDescription } from './normalize.ts'
 
@@ -105,6 +106,8 @@ export interface EnrichmentReport {
   contextWindowsFilled: number
   descriptionsFilled: number
   overridesApplied: number
+  /** Models the classifier declined to type, awaiting a human decision. */
+  needsReview: number
   error?: string
 }
 
@@ -117,6 +120,7 @@ export async function enrichModels(
     contextWindowsFilled: 0,
     descriptionsFilled: 0,
     overridesApplied: 0,
+    needsReview: 0,
   }
 
   let catalogue = new Map<string, MetadataEntry>()
@@ -169,8 +173,19 @@ export async function enrichModels(
         modality: override.modality ?? next.modality,
         tags: override.tags ?? next.tags,
         isActive: override.is_active ?? next.isActive,
+        capabilities: override.capabilities ?? next.capabilities ?? null,
       }
     }
+
+    /*
+     * Classify last, so a human decision in overrides.ts is in hand before the
+     * rules run. The classifier deliberately refuses to guess: where a name
+     * hint is not corroborated by the pricing shape it flags the model instead
+     * of typing it, and `npm run classify:review` lists what is waiting.
+     */
+    const classification = classifyModel(next, override)
+    if (classification.status === 'needs_review') report.needsReview++
+    next = { ...next, classification }
 
     return next
   })

@@ -127,6 +127,71 @@ describe('public API', { skip: hasDatabase ? false : 'no DATABASE_URL set' }, ()
     // reaches a consumer doing arithmetic on it.
     assert.ok(body.data.every((row) => typeof row.model_count === 'number'))
   })
+
+
+  test('GET /prices exposes model_type without changing the default set', async () => {
+    /*
+     * The contract half of this feature. The site's own views default to chat
+     * models, but silently dropping 32 models from what existing integrations
+     * already receive would be a breaking change to a published response —
+     * Constitution VI. Type is additive; the filter is opt-in.
+     */
+    const response = await prices.GET(request('https://example.test/api/v1/prices?limit=500'))
+    const body = await response.json()
+
+    assert.equal(response.status, 200)
+    const types = new Set(body.data.map((row: { model_type: string | null }) => row.model_type))
+    assert.ok(types.size > 1, 'the default response must still contain non-chat models')
+    assert.ok(types.has('general'))
+
+    for (const row of body.data) {
+      assert.ok('model_type' in row, `${row.model_id} is missing model_type`)
+      assert.ok('classification_status' in row)
+      // Null means unknown. An empty object would claim the model has no
+      // capabilities, which is a different and false statement.
+      assert.notEqual(row.capabilities, {}, `${row.model_id} capabilities must be null, not {}`)
+    }
+  })
+
+  test('GET /prices filters by type', async () => {
+    const response = await prices.GET(
+      request('https://example.test/api/v1/prices?type=embedding&limit=50'),
+    )
+    const body = await response.json()
+
+    assert.equal(response.status, 200)
+    assert.ok(body.data.length > 0, 'expected embedding models')
+    for (const row of body.data) {
+      assert.equal(row.model_type, 'embedding')
+    }
+  })
+
+  test('GET /prices accepts several types, comma-separated or repeated', async () => {
+    const comma = await prices.GET(
+      request('https://example.test/api/v1/prices?type=embedding,moderation&limit=50'),
+    )
+    const repeated = await prices.GET(
+      request('https://example.test/api/v1/prices?type=embedding&type=moderation&limit=50'),
+    )
+
+    const a = await comma.json()
+    const b = await repeated.json()
+    assert.equal(a.data.length, b.data.length)
+    for (const row of a.data) {
+      assert.ok(['embedding', 'moderation'].includes(row.model_type))
+    }
+  })
+
+  test('GET /prices rejects an unknown type', async () => {
+    // Loud rejection is right here, unlike the feed: an API caller is a
+    // programmer who can read the error and fix the request.
+    const response = await prices.GET(request('https://example.test/api/v1/prices?type=nonsense'))
+    const body = await response.json()
+
+    assert.equal(response.status, 400)
+    assert.equal(body.error.code, 'invalid_parameter')
+    assert.match(body.error.message, /type/i)
+  })
 })
 
 describe('rate limiting', { skip: hasDatabase ? false : 'no DATABASE_URL set' }, () => {
@@ -188,3 +253,4 @@ describe('rate limiting', { skip: hasDatabase ? false : 'no DATABASE_URL set' },
     assert.equal(blocked.limit, 100000)
   })
 })
+

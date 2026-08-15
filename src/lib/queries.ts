@@ -28,12 +28,27 @@ function cachedRead<Args extends unknown[], Result>(
     }
   }
 }
-import type { HistoryPointV1, PriceRowV1, SourceKind } from './types.ts'
+import type {
+  Capabilities,
+  ClassificationStatus,
+  HistoryPointV1,
+  ModelType,
+  PriceRowV1,
+  SourceKind,
+} from './types.ts'
 
 /** Read models for the public API and the comparison table. */
 
 export interface PriceFilters {
   provider?: string[]
+  /**
+   * Restrict to one kind of model. The site's own views pass 'general', because a
+   * cost-per-token ranking that includes an embedding or moderation endpoint
+   * is not a ranking of anything. The public API deliberately leaves this
+   * unset by default — dropping models from a published response would be a
+   * breaking change.
+   */
+  modelType?: ModelType | ModelType[]
   modality?: string
   tag?: string
   search?: string
@@ -88,6 +103,9 @@ interface PriceRecord {
   source_url: string | null
   source_kind: SourceKind | null
   updated_at: Date | null
+  model_type: ModelType | null
+  classification_status: ClassificationStatus | null
+  capabilities: Capabilities | null
   total_count: string | number
 }
 
@@ -114,6 +132,13 @@ async function getPricesUncached(filters: PriceFilters): Promise<PricesPage> {
       from v_current_prices
      where (${filters.includeInactive ?? false} or is_active)
        and (${filters.provider?.length ? sql`provider = any(${filters.provider})` : sql`true`})
+       and (${
+         filters.modelType
+           ? sql`model_type = any(${
+               Array.isArray(filters.modelType) ? filters.modelType : [filters.modelType]
+             })`
+           : sql`true`
+       })
        and (${filters.modality ? sql`${filters.modality} = any(modality)` : sql`true`})
        and (${filters.tag ? sql`${filters.tag} = any(tags)` : sql`true`})
        and (${
@@ -150,6 +175,13 @@ async function countPrices(filters: PriceFilters): Promise<number> {
     select count(*) as count from v_current_prices
      where (${filters.includeInactive ?? false} or is_active)
        and (${filters.provider?.length ? sql`provider = any(${filters.provider})` : sql`true`})
+       and (${
+         filters.modelType
+           ? sql`model_type = any(${
+               Array.isArray(filters.modelType) ? filters.modelType : [filters.modelType]
+             })`
+           : sql`true`
+       })
   `
   return Number(row?.count ?? 0)
 }
@@ -641,6 +673,12 @@ function toPriceRow(record: PriceRecord): PriceRowV1 {
     tags: record.tags ?? [],
     source_url: record.source_url,
     source_kind: record.source_kind ?? 'catalog',
+    // Coalesced rather than passed through: a database that has not had the
+    // classification columns added yet returns rows without the fields at all,
+    // and undefined here would drop the keys from every API response.
+    model_type: record.model_type ?? null,
+    classification_status: record.classification_status ?? 'needs_review',
+    capabilities: record.capabilities ?? null,
     updated_at: record.updated_at ? record.updated_at.toISOString() : null,
   }
 }
