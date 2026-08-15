@@ -112,6 +112,30 @@ const FUN_ITEMS = [
 const SORT_KEYS: SortKey[] = SORT_LABELS.map((option) => option.value)
 
 /**
+ * Human names for the model kinds, and the wording used when a type's prices
+ * are not comparable to chat prices — which is most of them: embeddings and
+ * moderation models have no output price at all, and image or speech models
+ * are often billed per image or per second rather than per token.
+ */
+const TYPE_LABELS: Record<string, string> = {
+  chat: 'Chat & text',
+  embedding: 'Embeddings',
+  moderation: 'Moderation',
+  tts: 'Text to speech',
+  asr: 'Speech to text',
+  image_gen: 'Image generation',
+  video_gen: 'Video generation',
+  ocr: 'OCR',
+  realtime: 'Realtime audio',
+  other: 'Other',
+  unclassified: 'Needs review',
+}
+
+function typeLabel(type: string): string {
+  return TYPE_LABELS[type] ?? type
+}
+
+/**
  * Read filter state from the URL.
  *
  * Done on the client rather than from server-side searchParams: reading them
@@ -168,6 +192,14 @@ export function PriceExplorer({ rows, providers, updatedAt, providerSlugs }: Exp
   // and the URL is applied in an effect below.
   const [selectedProviders, setSelectedProviders] = useState<string[]>([])
   const [flagshipOnly, setFlagshipOnly] = useState(false)
+  /*
+   * Chat by default, because a cost-per-token ranking that includes an
+   * embedding or moderation endpoint is not a ranking of anything — before
+   * this, a moderation endpoint was the 4th cheapest model on the site. The
+   * other types are one control away rather than removed: they are real
+   * models with real prices, they are simply not comparable to chat models.
+   */
+  const [modelType, setModelType] = useState<string>('chat')
   const [under1, setUnder1] = useState(false)
   const [million, setMillion] = useState(false)
   const [search, setSearch] = useState('')
@@ -315,6 +347,7 @@ export function PriceExplorer({ rows, providers, updatedAt, providerSlugs }: Exp
     const query = search.trim().toLowerCase()
     return rows.filter((row) => {
       if (selectedProviders.length > 0 && !selectedProviders.includes(row.provider)) return false
+      if (modelType !== 'all' && (row.model_type ?? 'unclassified') !== modelType) return false
       if (flagshipOnly && !row.tags.includes('flagship')) return false
       if (under1 && !(row.input !== null && row.input < 1)) return false
       if (million && !(row.context_window !== null && row.context_window >= 1_000_000)) return false
@@ -327,7 +360,31 @@ export function PriceExplorer({ rows, providers, updatedAt, providerSlugs }: Exp
       }
       return true
     })
-  }, [rows, selectedProviders, flagshipOnly, under1, million, search])
+  }, [rows, selectedProviders, modelType, flagshipOnly, under1, million, search])
+
+  /** Types actually present in the data, so the control never offers an empty view. */
+  const availableTypes = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const row of rows) {
+      const key = row.model_type ?? 'unclassified'
+      counts.set(key, (counts.get(key) ?? 0) + 1)
+    }
+    return [...counts.entries()].sort((a, b) => b[1] - a[1])
+  }, [rows])
+
+  /*
+   * A search that matches nothing here but matches under another type is the
+   * one way this filter could look like deletion. Say where the model went
+   * rather than reporting that it does not exist.
+   */
+  const elsewhere = useMemo(() => {
+    const query = search.trim().toLowerCase()
+    if (!query || filtered.length > 0 || modelType === 'all') return null
+    const hit = rows.find((row) =>
+      `${row.model_id} ${row.display_name}`.toLowerCase().includes(query),
+    )
+    return hit ? { modelId: hit.model_id, type: hit.model_type ?? 'unclassified' } : null
+  }, [rows, filtered, search, modelType])
 
   // --- ranking ------------------------------------------------------------
   // One blended metric drives both the column and the ranking, so the table
@@ -521,6 +578,39 @@ export function PriceExplorer({ rows, providers, updatedAt, providerSlugs }: Exp
         </p>
       )}
 
+      {/*
+        Non-chat prices are not comparable to chat prices, and saying so is not
+        optional politeness — embeddings and moderation models have no output
+        price at all, and image and speech models are frequently billed per
+        image or per second rather than per token. Ranking them beside chat
+        models without a word would repeat the fault this filter fixed.
+      */}
+      {modelType !== 'chat' && modelType !== 'all' && (
+        <p role="status" className="mb-3 rounded-lg bg-amber-50 px-3 py-2 text-[13px] text-amber-900">
+          Showing <strong>{typeLabel(modelType)}</strong> models. Their pricing is not comparable to
+          chat models — many have no output price, and some are billed per request rather than per
+          token.
+        </p>
+      )}
+
+      {/*
+        The one way a default filter can look like deletion: a reader searches
+        for a model that exists, and is told it does not.
+      */}
+      {elsewhere && (
+        <p role="status" className="mb-3 rounded-lg bg-neutral-100 px-3 py-2 text-[13px] text-neutral-700">
+          No match under {typeLabel(modelType)}, but <strong>{elsewhere.modelId}</strong> exists under{' '}
+          <button
+            type="button"
+            onClick={() => setModelType(elsewhere.type)}
+            className="font-semibold text-emerald-700 underline underline-offset-2"
+          >
+            {typeLabel(elsewhere.type)}
+          </button>
+          .
+        </p>
+      )}
+
       <div className="mb-4 flex flex-wrap gap-3.5">
         <StatsCard stats={stats} count={filtered.length} />
         <TrendCard series={trendSeries} pct={trendPct} />
@@ -637,6 +727,23 @@ export function PriceExplorer({ rows, providers, updatedAt, providerSlugs }: Exp
             >
               1M+ context
             </button>
+
+            <label className="sr-only" htmlFor="model-type">
+              Model type
+            </label>
+            <select
+              id="model-type"
+              value={modelType}
+              onChange={(event) => setModelType(event.target.value)}
+              className="min-h-[44px] cursor-pointer rounded-lg border border-neutral-200 bg-white px-2.5 text-sm text-neutral-900 sm:min-h-0 sm:py-2"
+            >
+              {availableTypes.map(([type, count]) => (
+                <option key={type} value={type}>
+                  {typeLabel(type)} ({count})
+                </option>
+              ))}
+              <option value="all">All types ({rows.length})</option>
+            </select>
 
             <label className="sr-only" htmlFor="sort-order">
               Sort order

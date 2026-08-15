@@ -77,6 +77,17 @@ export default async function HomePage() {
      * lighter pages were fine. The cost of doing them in series is about
      * 100ms, since all but the first are served from cache.
      */
+    /*
+     * Every type is fetched, and the explorer defaults its own view to chat.
+     *
+     * The filter has to be client-side because the type control switches
+     * between kinds without a round trip — the page hands over the full set
+     * once, as it already did for provider and price filters. What changed is
+     * the default: non-generative models are no longer in the opening view,
+     * because ranking an embedding or moderation endpoint by cost-per-token
+     * compares nothing. Before this, a moderation endpoint was the 4th
+     * cheapest model on the site.
+     */
     const page = await getPrices({ limit: 500, offset: 0, sort: 'input', direction: 'asc' })
     const providerRows = await getProviders()
     const lastUpdated = await getLastUpdated()

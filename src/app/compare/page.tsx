@@ -52,7 +52,17 @@ export default async function ComparePage() {
   try {
     // One read, sorted by price. Sequential by habit across this codebase:
     // concurrent reads sharing a single database connection deadlock.
-    const page = await getPrices({ limit: 500, offset: 0, sort: 'input', direction: 'asc' })
+    /*
+     * Text generators only, so the comparison builder offers models that can
+     * actually be compared against each other.
+     */
+    const page = await getPrices({
+      limit: 500,
+      offset: 0,
+      sort: 'input',
+      direction: 'asc',
+      modelType: 'chat',
+    })
     rows = page.rows
   } catch (cause) {
     error = cause instanceof Error ? cause.message : String(cause)

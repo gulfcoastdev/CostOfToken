@@ -5,6 +5,72 @@ export type Modality = 'text' | 'vision' | 'audio' | 'video' | 'image'
 /** How a price row was obtained. Surfaced in the API so callers can judge freshness. */
 export type SourceKind = 'scrape' | 'api' | 'catalog'
 
+/**
+ * What kind of thing a model is.
+ *
+ * `other` means determined and none of the above. A **null** type means not yet
+ * determined — the distinction the old `modality` column could not express,
+ * which is part of why its values are untrustworthy.
+ */
+export type ModelType =
+  | 'chat'
+  | 'embedding'
+  | 'moderation'
+  | 'tts'
+  | 'asr'
+  | 'image_gen'
+  | 'video_gen'
+  | 'ocr'
+  | 'realtime'
+  | 'other'
+
+export const MODEL_TYPES: readonly ModelType[] = [
+  'chat',
+  'embedding',
+  'moderation',
+  'tts',
+  'asr',
+  'image_gen',
+  'video_gen',
+  'ocr',
+  'realtime',
+  'other',
+]
+
+export function isModelType(value: string): value is ModelType {
+  return (MODEL_TYPES as readonly string[]).includes(value)
+}
+
+/** Only text generators belong in a cost-per-token ranking. */
+export function isGenerative(type: ModelType | null): boolean {
+  return type === 'chat'
+}
+
+export type ClassificationStatus = 'confirmed' | 'needs_review'
+
+/** How a type was reached. `manual` is never overwritten by the pipeline. */
+export type ClassificationSource = 'manual' | 'derived'
+
+export interface Classification {
+  modelType: ModelType | null
+  status: ClassificationStatus
+  source: ClassificationSource | null
+  /** Non-null whenever status is `needs_review`: what fired, and why it was not trusted. */
+  note: string | null
+}
+
+/**
+ * What a model accepts, produces and is notably good at.
+ *
+ * Recorded, never derived. A missing key means unknown, not empty — nothing may
+ * render an absent capability as a negative claim.
+ */
+export interface Capabilities {
+  input?: string[]
+  output?: string[]
+  features?: string[]
+}
+
 export const SOURCE_KINDS: readonly SourceKind[] = ['scrape', 'api', 'catalog']
 
 /**
@@ -47,6 +113,10 @@ export interface NormalizedModel {
   tags: string[]
   isActive: boolean
   pricing: NormalizedPricing
+  /** Assigned by the classifier; null type means not yet determined. */
+  classification?: Classification
+  /** Recorded only where a source declares it or a person wrote it down. */
+  capabilities?: Capabilities | null
 }
 
 export interface ProviderDefinition {
@@ -74,9 +144,14 @@ export interface PriceRowV1 {
   long_cached_input: number | null
   long_output: number | null
   currency: string
-  /** Unreliable — stored and served, but deliberately not displayed. */
+  /** Unreliable — stored and served, but deliberately not displayed. Superseded by model_type. */
   modality: string[]
   tags: string[]
+  /** Null means not yet determined, never "none of the above" — that is `other`. */
+  model_type: ModelType | null
+  classification_status: ClassificationStatus
+  /** Null means unknown. Never `{}`, which would imply the model has no capabilities. */
+  capabilities: Capabilities | null
   source_url: string | null
   source_kind: SourceKind
   updated_at: string | null

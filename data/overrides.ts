@@ -1,4 +1,4 @@
-import type { Modality } from '@/lib/types.ts'
+import type { Capabilities, Modality, ModelType } from '@/lib/types.ts'
 
 /**
  * Hand-curated corrections applied after extraction, keyed by provider +
@@ -20,6 +20,15 @@ export interface ModelOverride {
   /** Replaces whatever prose extraction found. Write it as a fact, not a pitch. */
   description?: string
   modality?: Modality[]
+  /**
+   * A human decision about what kind of model this is. Always wins over the
+   * classifier and is never overwritten by a pipeline run — which is the
+   * point: the automatic rules deliberately refuse to guess, so this is where
+   * the answer goes once someone has checked the provider's documentation.
+   */
+  model_type?: ModelType
+  /** Recorded, never derived. Omit rather than guessing. */
+  capabilities?: Capabilities
   tags?: string[]
   is_active?: boolean
   notes?: string

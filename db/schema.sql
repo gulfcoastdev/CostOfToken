@@ -74,6 +74,49 @@ alter table models add column if not exists source_rank integer;
 -- numbers and one a reader can actually decide from.
 alter table models add column if not exists description text;
 
+-- ---------------------------------------------------------------------------
+-- Classification: what kind of thing a model is.
+--
+-- Nullable on purpose. `model_type = null` means "not yet determined", which
+-- is exactly what the older `modality` column cannot express — it has a
+-- non-null default, so a guess and a fact look identical in it. Being able to
+-- say "we don't know" is what stops this column going the same way.
+--
+-- `other` is different from null: it means determined, and none of the known
+-- kinds.
+alter table models add column if not exists model_type text
+  check (model_type is null or model_type in (
+    'chat', 'embedding', 'moderation', 'tts', 'asr',
+    'image_gen', 'video_gen', 'ocr', 'realtime', 'other'
+  ));
+
+alter table models add column if not exists classification_status text not null default 'needs_review'
+  check (classification_status in ('confirmed', 'needs_review'));
+
+-- 'manual' is a human decision recorded in data/overrides.ts and is never
+-- overwritten by a pipeline run.
+alter table models add column if not exists classification_source text
+  check (classification_source is null or classification_source in ('manual', 'derived'));
+
+-- Why review is needed: which hint fired and why it was not trusted. Populated
+-- whenever classification_status is 'needs_review', so the queue is actionable
+-- without reopening the vendor's page.
+alter table models add column if not exists classification_note text;
+
+-- What the model accepts, produces and is notably good at. Recorded from a
+-- declaring source or a human, never inferred. Null means unknown; an empty
+-- object would wrongly imply the model has no capabilities.
+alter table models add column if not exists capabilities jsonb;
+
+-- A confirmed classification must actually say something.
+alter table models drop constraint if exists models_classification_coherent;
+alter table models add constraint models_classification_coherent
+  check (classification_status <> 'confirmed' or model_type is not null);
+
+create index if not exists models_type_idx on models (model_type) where is_active;
+create index if not exists models_review_idx on models (classification_status)
+  where classification_status = 'needs_review';
+
 create index if not exists models_provider_idx on models (provider_id);
 create index if not exists models_source_rank_idx on models (provider_id, source_rank);
 create index if not exists models_active_idx   on models (is_active) where is_active;
@@ -273,7 +316,10 @@ select
   -- Appended last on purpose: `create or replace view` can only add columns to
   -- the end of an existing view's list, so a new field placed mid-list would
   -- make this file fail to re-run against an already-deployed database.
-  m.description
+  m.description,
+  m.model_type,
+  m.classification_status,
+  m.capabilities
 from models m
   join providers p on p.id = m.provider_id
   left join prices pr on pr.model_id = m.id;

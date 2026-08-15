@@ -80,6 +80,13 @@ export async function upsertProviderModels(
           modality: m.modality,
           tags: m.tags,
           is_active: m.isActive,
+          model_type: m.classification?.modelType ?? null,
+          classification_status: m.classification?.status ?? 'needs_review',
+          classification_source: m.classification?.source ?? null,
+          classification_note: m.classification?.note ?? null,
+          // postgres.js needs jsonb passed explicitly; a bare object widens the
+          // row type and breaks inference for the whole insert.
+          capabilities: m.capabilities ? tx.json(m.capabilities as never) : null,
         })),
       )}
       on conflict (provider_id, model_id) do update set
@@ -94,7 +101,37 @@ export async function upsertProviderModels(
         description            = coalesce(excluded.description, models.description),
         modality               = excluded.modality,
         tags                   = excluded.tags,
-        is_active              = excluded.is_active
+        is_active              = excluded.is_active,
+        -- A human decision outranks anything the rules produce. Without these
+        -- guards a nightly run would quietly undo the review work that the
+        -- classifier's refusal to guess made necessary in the first place.
+        model_type             = case
+                                   when models.classification_source = 'manual'
+                                    and excluded.classification_source is distinct from 'manual'
+                                   then models.model_type
+                                   else excluded.model_type
+                                 end,
+        classification_status  = case
+                                   when models.classification_source = 'manual'
+                                    and excluded.classification_source is distinct from 'manual'
+                                   then models.classification_status
+                                   else excluded.classification_status
+                                 end,
+        classification_source  = case
+                                   when models.classification_source = 'manual'
+                                    and excluded.classification_source is distinct from 'manual'
+                                   then models.classification_source
+                                   else excluded.classification_source
+                                 end,
+        classification_note    = case
+                                   when models.classification_source = 'manual'
+                                    and excluded.classification_source is distinct from 'manual'
+                                   then models.classification_note
+                                   else excluded.classification_note
+                                 end,
+        -- Recorded, never derived: a run that learned nothing must not erase
+        -- capabilities an earlier run or a person did record.
+        capabilities           = coalesce(excluded.capabilities, models.capabilities)
       returning id, model_id
     `
 
