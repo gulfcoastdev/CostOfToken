@@ -11,7 +11,7 @@ import {
   formatRelativeTime,
 } from '@/lib/format.ts'
 import { compareHref, MAX_COMPARED, modelKey } from '@/lib/compare.ts'
-import type { PriceRowV1 } from '@/lib/types.ts'
+import { resolveTypeFilter, type PriceRowV1 } from '@/lib/types.ts'
 import { DEFAULT_FEATURED_MODEL_IDS, MAX_FEATURED } from '../../data/featured.ts'
 import { FeaturedModels } from './featured-models.tsx'
 import { ModelCard, ModelDetails, StarButton } from './model-card.tsx'
@@ -343,11 +343,20 @@ export function PriceExplorer({ rows, providers, updatedAt, providerSlugs }: Exp
   const pinnedSet = useMemo(() => new Set(effectivePins), [effectivePins])
 
   // --- filtering ----------------------------------------------------------
+  /*
+   * Falls back to 'all' when nothing in the data is classified, so an
+   * unmigrated database degrades to the pre-classification view rather than to
+   * a blank page. See resolveTypeFilter for why the two are indistinguishable
+   * from here.
+   */
+  const effectiveType = useMemo(() => resolveTypeFilter(rows, modelType), [rows, modelType])
+
   const filtered = useMemo(() => {
     const query = search.trim().toLowerCase()
     return rows.filter((row) => {
       if (selectedProviders.length > 0 && !selectedProviders.includes(row.provider)) return false
-      if (modelType !== 'all' && (row.model_type ?? 'unclassified') !== modelType) return false
+      if (effectiveType !== 'all' && (row.model_type ?? 'unclassified') !== effectiveType)
+        return false
       if (flagshipOnly && !row.tags.includes('flagship')) return false
       if (under1 && !(row.input !== null && row.input < 1)) return false
       if (million && !(row.context_window !== null && row.context_window >= 1_000_000)) return false
@@ -360,7 +369,7 @@ export function PriceExplorer({ rows, providers, updatedAt, providerSlugs }: Exp
       }
       return true
     })
-  }, [rows, selectedProviders, modelType, flagshipOnly, under1, million, search])
+  }, [rows, selectedProviders, effectiveType, flagshipOnly, under1, million, search])
 
   /** Types actually present in the data, so the control never offers an empty view. */
   const availableTypes = useMemo(() => {
@@ -379,12 +388,12 @@ export function PriceExplorer({ rows, providers, updatedAt, providerSlugs }: Exp
    */
   const elsewhere = useMemo(() => {
     const query = search.trim().toLowerCase()
-    if (!query || filtered.length > 0 || modelType === 'all') return null
+    if (!query || filtered.length > 0 || effectiveType === 'all') return null
     const hit = rows.find((row) =>
       `${row.model_id} ${row.display_name}`.toLowerCase().includes(query),
     )
     return hit ? { modelId: hit.model_id, type: hit.model_type ?? 'unclassified' } : null
-  }, [rows, filtered, search, modelType])
+  }, [rows, filtered, search, effectiveType])
 
   // --- ranking ------------------------------------------------------------
   // One blended metric drives both the column and the ranking, so the table
@@ -585,9 +594,9 @@ export function PriceExplorer({ rows, providers, updatedAt, providerSlugs }: Exp
         image or per second rather than per token. Ranking them beside chat
         models without a word would repeat the fault this filter fixed.
       */}
-      {modelType !== 'general' && modelType !== 'all' && (
+      {effectiveType !== 'general' && effectiveType !== 'all' && (
         <p role="status" className="mb-3 rounded-lg bg-amber-50 px-3 py-2 text-[13px] text-amber-900">
-          Showing <strong>{typeLabel(modelType)}</strong> models. Their pricing is not comparable to
+          Showing <strong>{typeLabel(effectiveType)}</strong> models. Their pricing is not comparable to
           chat models — many have no output price, and some are billed per request rather than per
           token.
         </p>
@@ -599,7 +608,7 @@ export function PriceExplorer({ rows, providers, updatedAt, providerSlugs }: Exp
       */}
       {elsewhere && (
         <p role="status" className="mb-3 rounded-lg bg-neutral-100 px-3 py-2 text-[13px] text-neutral-700">
-          No match under {typeLabel(modelType)}, but <strong>{elsewhere.modelId}</strong> exists under{' '}
+          No match under {typeLabel(effectiveType)}, but <strong>{elsewhere.modelId}</strong> exists under{' '}
           <button
             type="button"
             onClick={() => setModelType(elsewhere.type)}
@@ -733,7 +742,7 @@ export function PriceExplorer({ rows, providers, updatedAt, providerSlugs }: Exp
             </label>
             <select
               id="model-type"
-              value={modelType}
+              value={effectiveType}
               onChange={(event) => setModelType(event.target.value)}
               className="min-h-[44px] cursor-pointer rounded-lg border border-neutral-200 bg-white px-2.5 text-sm text-neutral-900 sm:min-h-0 sm:py-2"
             >

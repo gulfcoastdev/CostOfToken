@@ -42,6 +42,32 @@ export function isModelType(value: string): value is ModelType {
   return (MODEL_TYPES as readonly string[]).includes(value)
 }
 
+/**
+ * The type filter to actually apply, given what the data knows.
+ *
+ * Returns the caller's selection normally, and `'all'` when not one row
+ * carries a type. That second case is not "everything happens to be untyped" —
+ * it is the shape a database without the classification columns takes by the
+ * time it reaches the UI, because the missing column is coalesced to null per
+ * row and so looks exactly like a genuine unknown.
+ *
+ * Without this, the default 'general' selection matches nothing and the site
+ * renders an empty table while holding a full catalogue. That is what shipping
+ * the classification code ahead of its migration did to production. A filter
+ * may narrow the view; it must never be the reason the site looks empty.
+ */
+export function resolveTypeFilter(
+  rows: ReadonlyArray<{ model_type: ModelType | null }>,
+  selected: string,
+): string {
+  // No rows at all says nothing about the schema — there is simply no data to
+  // draw a conclusion from, and widening the filter on that basis would
+  // override a selection for no reason.
+  if (rows.length === 0) return selected
+
+  return rows.some((row) => row.model_type !== null) ? selected : 'all'
+}
+
 /** Only general-purpose text generators belong in a cost-per-token ranking. */
 export function isGenerative(type: ModelType | null): boolean {
   return type === 'general'
