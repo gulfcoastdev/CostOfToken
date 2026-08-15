@@ -68,6 +68,7 @@ Current prices for all tracked models.
 | Param | Type | Notes |
 | --- | --- | --- |
 | `provider` | string | Repeatable or comma-separated: `?provider=openai,xai` |
+| `type` | enum | Repeatable or comma-separated: `chat`, `embedding`, `moderation`, `tts`, `asr`, `image_gen`, `video_gen`, `ocr`, `realtime`, `other`. Unknown values return `400` |
 | `modality` | string | `text`, `vision`, `audio`, `video`, `image` — **unreliable**, see below |
 | `tag` | string | `flagship`, `fast`, `reasoning`, `coding`, `vision`, … |
 | `q` | string | Substring match on model id or display name |
@@ -99,7 +100,29 @@ curl 'https://<host>/api/v1/prices?provider=xai&sort=input&limit=3'
 | `context_window`, `max_output_tokens` | int \| null | |
 | `currency` | string | Usually `USD` |
 | `tags` | string[] | |
-| `modality` | string[] | **Unreliable** — mostly inferred from model names, not declared by vendors. Not displayed anywhere on the site; served only so existing callers do not break. |
+| `modality` | string[] | **Unreliable** — mostly inferred from model names, not declared by vendors. Superseded by `model_type`. Not displayed anywhere on the site; served only so existing callers do not break. |
+| `model_type` | string \| null | What kind of model it is. `null` means **not yet determined**, which is different from `other` (determined, none of the known kinds). |
+| `classification_status` | string | `confirmed` or `needs_review`. A model is only typed when the evidence supports it — a name pattern alone never decides — so `needs_review` is a real and expected state. |
+| `capabilities` | object \| null | What the model accepts and produces, recorded from a declaring source or a human. `null` means unknown; it is never `{}`, which would claim the model has no capabilities. |
+
+### Filtering by model type
+
+The default response is **unfiltered**: it returns every model it returned
+before classification existed, non-generative ones included. Dropping models
+from a published response would break existing callers, so the filter is
+opt-in:
+
+```bash
+curl 'https://costoftoken.com/api/v1/prices?type=chat'          # text generators only
+curl 'https://costoftoken.com/api/v1/prices?type=embedding,ocr' # several types
+```
+
+The site's own table and calculator default to `chat`, because ranking an
+embedding or moderation endpoint by cost-per-token compares nothing — before
+this existed, a moderation endpoint was the 4th cheapest model listed. Prices
+are only comparable within a type: embeddings and moderation models have no
+output price at all, and image and speech models are often billed per image or
+per second rather than per token.
 | `source_url` | string \| null | Document the price was read from |
 | `source_kind` | enum | `scrape` = vendor's own page · `api` = reseller catalogue · `catalog` = curated |
 | `updated_at` | string | ISO 8601 |

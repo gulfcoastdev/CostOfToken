@@ -118,14 +118,14 @@ rather than being assigned a type. Quickstart scenarios 8, 9.
 
 ### Tests for User Story 4
 
-- [ ] T023 [P] [US4] Write a failing test in `tests/classify.test.ts` that a flagged model's `note` names the pattern that fired and why it was not trusted, so the queue is actionable without opening a vendor page. **MUST FAIL**
+- [X] T023 [P] [US4] Write a failing test in `tests/classify.test.ts` that a flagged model's `note` names the pattern that fired and why it was not trusted, so the queue is actionable without opening a vendor page. **MUST FAIL**
 
 ### Implementation for User Story 4
 
-- [ ] T024 [US4] Implement `scripts/classify-review.ts` and wire `npm run classify:review` — list each flagged model with provider, id, prices, the hint that fired and the reason it was not trusted; support `--json`
-- [ ] T025 [US4] Work the queue: for each of the ~17 flagged models, check the provider's own documentation and record the decision in `data/overrides.ts` with a `notes` line citing the source. Do **not** guess — leave anything still unclear flagged
-- [ ] T026 [US4] Re-run the pipeline and confirm manual decisions are applied and survive a second run (contract P2)
-- [ ] T027 [US4] Run quickstart scenarios 8 and 9
+- [X] T024 [US4] Implement `scripts/classify-review.ts` and wire `npm run classify:review` — list each flagged model with provider, id, prices, the hint that fired and the reason it was not trusted; support `--json`
+- [X] T025 [US4] Work the queue: for each of the ~17 flagged models, check the provider's own documentation and record the decision in `data/overrides.ts` with a `notes` line citing the source. Do **not** guess — leave anything still unclear flagged
+- [X] T026 [US4] Re-run the pipeline and confirm manual decisions are applied and survive a second run (contract P2)
+- [X] T027 [US4] Run quickstart scenarios 8 and 9
 
 **Checkpoint**: the flagged set is resolved or honestly still flagged.
 
@@ -142,13 +142,13 @@ nothing.
 
 ### Tests for User Story 3
 
-- [ ] T028 [P] [US3] Write a failing test in `tests/classify.test.ts` that capabilities are only ever populated from a declaring source or an override, and that absence is `null` rather than an empty object implying "none". **MUST FAIL**
+- [X] T028 [P] [US3] Write a failing test in `tests/classify.test.ts` that capabilities are only ever populated from a declaring source or an override, and that absence is `null` rather than an empty object implying "none". **MUST FAIL**
 
 ### Implementation for User Story 3
 
-- [ ] T029 [US3] Carry declared input modalities from the OpenRouter catalogue into `capabilities` for the models it covers — the one genuinely declared source available (research R1)
-- [ ] T030 [US3] Display type and known capabilities on the model page and in the expanded table row, rendering an absent capability as unstated rather than as a negative claim
-- [ ] T031 [US3] Remove the untrustworthy `modality` values from display paths so a stale guess cannot outlive the new field (FR-016)
+- [X] T029 [US3] Carry declared input modalities from the OpenRouter catalogue into `capabilities` for the models it covers — the one genuinely declared source available (research R1)
+- [X] T030 [US3] Display type and known capabilities on the model page and in the expanded table row, rendering an absent capability as unstated rather than as a negative claim
+- [X] T031 [US3] Remove the untrustworthy `modality` values from display paths so a stale guess cannot outlive the new field (FR-016)
 
 ---
 
@@ -156,23 +156,23 @@ nothing.
 
 ### Tests for User Story 5
 
-- [ ] T032 [P] [US5] Write failing tests in `tests/api.test.ts` — `/api/v1/prices` with no new parameters returns the same model count as before the change (including all 32 non-chat); `?type=embedding` returns only embeddings; a repeated/comma-separated `type` works; an unknown type returns `400` with the existing error envelope. **MUST FAIL**
+- [X] T032 [P] [US5] Write failing tests in `tests/api.test.ts` — `/api/v1/prices` with no new parameters returns the same model count as before the change (including all 32 non-chat); `?type=embedding` returns only embeddings; a repeated/comma-separated `type` works; an unknown type returns `400` with the existing error envelope. **MUST FAIL**
 
 ### Implementation for User Story 5
 
-- [ ] T033 [US5] Add `model_type`, `classification_status` and `capabilities` to the API row shape in `src/lib/queries.ts` and `src/lib/types.ts`, additively
-- [ ] T034 [US5] Add the `type` parameter to `src/app/api/v1/prices/route.ts`, validated against the enum, defaulting to no filter. Greens T032
-- [ ] T035 [US5] Document the new field and parameter in `docs/API.md` and `/api-docs`, stating plainly that the default response is unchanged
-- [ ] T036 [US5] Run quickstart scenario 7
+- [X] T033 [US5] Add `model_type`, `classification_status` and `capabilities` to the API row shape in `src/lib/queries.ts` and `src/lib/types.ts`, additively
+- [X] T034 [US5] Add the `type` parameter to `src/app/api/v1/prices/route.ts`, validated against the enum, defaulting to no filter. Greens T032
+- [X] T035 [US5] Document the new field and parameter in `docs/API.md` and `/api-docs`, stating plainly that the default response is unchanged
+- [X] T036 [US5] Run quickstart scenario 7
 
 ---
 
 ## Phase 8: Polish
 
-- [ ] T037 [P] Document classification in `README.md` — the rule table, why a name alone never decides, and how to work the review queue
-- [ ] T038 [P] Add a completed entry to `BACKLOG.md`, noting that capability derivation and quality scores are deliberately separate
-- [ ] T039 Run quickstart scenario 10 (re-running changes nothing) and spot-check 20 classified models against provider documentation (SC-005)
-- [ ] T040 Run the full gate set: `npm test`, `npm run typecheck`, `npm run build`
+- [X] T037 [P] Document classification in `README.md` — the rule table, why a name alone never decides, and how to work the review queue
+- [X] T038 [P] Add a completed entry to `BACKLOG.md`, noting that capability derivation and quality scores are deliberately separate
+- [X] T039 Run quickstart scenario 10 (re-running changes nothing) and spot-check 20 classified models against provider documentation (SC-005)
+- [X] T040 Run the full gate set: `npm test`, `npm run typecheck`, `npm run build`
 
 ---
 

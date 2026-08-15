@@ -22,6 +22,19 @@ Working roadmap. Ordered by priority, not by effort.
       make the site the one people bookmark, because it answers the question
       the table only approximates.
 
+- [x] **Model type classification** — done.
+      Every model carries a `model_type`; the table and calculator default to
+      chat, so a moderation endpoint is no longer the 4th cheapest model on the
+      site. Rules refuse to guess: a name hint must be corroborated by the
+      pricing shape, or the model is flagged. `npm run classify:review`.
+      *Notes:* 16 of 17 flagged models resolved from first-party sources;
+      `glm-ocr` deliberately still flagged. The public API default is
+      unchanged — type is additive and the filter opt-in.
+      *Next:* capability derivation is deliberately not built. OpenAI states a
+      modality column in its own pricing table and Google describes models in
+      prose; an extractor could capture those as declared evidence instead of
+      relying on the name/price heuristic.
+
 - [x] **Changelog feed (RSS)** — done, `/feed.xml`.
       New models and price changes as they are recorded, filterable by provider
       and event kind. Built through Spec Kit; spec, plan and contract live in

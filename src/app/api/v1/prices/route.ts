@@ -1,5 +1,6 @@
 import { errorResponse, gate, jsonResponse, parsePagination } from '@/lib/api.ts'
 import { getPrices, isSortKey, type PriceFilters } from '@/lib/queries.ts'
+import { isModelType, MODEL_TYPES, type ModelType } from '@/lib/types.ts'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -17,7 +18,14 @@ export const dynamic = 'force-dynamic'
  *   order      asc | desc
  *   limit      1..500 (default 100)
  *   offset     >= 0
+ *   type       chat|embedding|moderation|tts|asr|image_gen|video_gen|ocr|realtime|other
+ *              repeatable or comma-separated
  *   include_inactive  "true" to include delisted models
+ *
+ * The default response is deliberately unfiltered by type: it returns every
+ * model it returned before classification existed, non-generative ones
+ * included. The site's own views default to chat, but dropping models from a
+ * published response would break existing callers.
  */
 export async function GET(request: Request) {
   const gated = await gate(request)
@@ -65,6 +73,22 @@ export async function GET(request: Request) {
     )
   }
 
+  const requestedTypes = params
+    .getAll('type')
+    .flatMap((value) => value.split(','))
+    .map((value) => value.trim().toLowerCase())
+    .filter(Boolean)
+
+  const unknownType = requestedTypes.find((value) => !isModelType(value))
+  if (unknownType) {
+    return errorResponse(
+      400,
+      'invalid_parameter',
+      `Unknown model type "${unknownType}". Valid: ${MODEL_TYPES.join(', ')}.`,
+      gated.headers,
+    )
+  }
+
   const providers = params
     .getAll('provider')
     .flatMap((value) => value.split(','))
@@ -73,6 +97,7 @@ export async function GET(request: Request) {
 
   const filters: PriceFilters = {
     provider: providers.length > 0 ? providers : undefined,
+    modelType: requestedTypes.length > 0 ? (requestedTypes as ModelType[]) : undefined,
     modality: params.get('modality')?.trim().toLowerCase() || undefined,
     tag: params.get('tag')?.trim().toLowerCase() || undefined,
     search: params.get('q')?.trim() || undefined,

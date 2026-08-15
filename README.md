@@ -171,6 +171,60 @@ openai       blocked   scrape   73      0        596ms
   BLOCK coverage_drop: Model count fell 62% (193 → 73). The source layout probably changed.
 ```
 
+### Model types
+
+Not everything with a per-token price is a text generator. Of 226 tracked
+models, 35 are embeddings, moderation, OCR, speech or image models — and
+before they were classified they sat in the default price ranking, where
+`omni-moderation-latest` was the **4th cheapest model on the site**.
+
+Every model now carries a `model_type`. The rules are short, ordered, and
+refuse to guess:
+
+| # | Condition | Result |
+| --- | --- | --- |
+| 1 | A decision in `data/overrides.ts` | that type, `manual` |
+| 2 | Non-chat name hint **and** no output price | that type, `derived` |
+| 3 | Non-chat name hint **and** an output price | flagged, left untyped |
+| 4 | No hint **and** priced for input and output | `chat`, `derived` |
+| 5 | Anything else | flagged |
+
+Rule 3 is the whole point. A name alone never decides anything — that is
+exactly how the older `modality` column came to record `gpt-image-1`,
+`glm-ocr` and `gemini-embedding` as text-only models. A hint has to be
+corroborated by the shape of the vendor's own billing: a model that charges
+for output tokens is charging for generated text. Where the two signals
+disagree, the model is flagged for a person instead of being assigned whichever
+one we felt like trusting.
+
+`model_type` is nullable on purpose. **Null means "not yet determined"**, which
+is different from `other` ("determined, none of the known kinds") — the
+distinction the old column could not express.
+
+```bash
+npm run classify:review          # what is waiting, and why it was not trusted
+npm run classify:review -- --json
+```
+
+Decisions go in `data/overrides.ts` with the evidence quoted in `notes`, and a
+manual entry is never overwritten by a pipeline run. Sixteen of the seventeen
+originally flagged were resolved from first-party sources — OpenAI states a
+modality in its own pricing table (`| gpt-image-1 | Image | … |`) and Google
+describes each model in prose ("Our 2.5 Flash text-to-speech audio model").
+`glm-ocr` is deliberately still flagged: nothing first-party was found that
+settles whether it is a generator that reads images or a pure extraction
+endpoint, and flagged is a better answer than a guess.
+
+The table and calculator default to `chat`; other types are one control away,
+labelled with the fact that their pricing is not comparable. **The public API
+default is unchanged** — it still returns every model, with `model_type` as an
+additive field and `?type=` as an opt-in filter, because dropping rows from a
+published response would break existing callers.
+
+Capabilities are **recorded, never derived**. A capability is stored when a
+source declares it or a person writes it down; otherwise it stays `null`.
+Populating them across the catalogue is a separate pass.
+
 ### Data-quality guards
 
 The pipeline's failure mode is quietly publishing wrong numbers, so:
