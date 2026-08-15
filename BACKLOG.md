@@ -22,6 +22,18 @@ Working roadmap. Ordered by priority, not by effort.
       make the site the one people bookmark, because it answers the question
       the table only approximates.
 
+- [x] **Changelog feed (RSS)** — done, `/feed.xml`.
+      New models and price changes as they are recorded, filterable by provider
+      and event kind. Built through Spec Kit; spec, plan and contract live in
+      `specs/001-model-changelog-feed/`.
+      *Notes:* no new data collection — `models.created_at` and `price_history`
+      already hold both event kinds. The subtlety is that the history trigger
+      fires on insert too, so each model's first history row is excluded or
+      every new model would announce itself twice. Item guids come from
+      immutable database ids so a reader announces each event exactly once.
+      *Not done:* model retirement produces no entry — the catalogue has no
+      deactivation timestamp honest enough to date one with.
+
 - [x] **Top compare pages** — done, both live.
       - `/compare/gpt-5.6-sol-vs-claude-opus-5`
       - `/compare/gpt-5.6-luna-vs-gemini-3.6-flash`

@@ -33,6 +33,12 @@ export const metadata: Metadata = {
     types: {
       'application/json': [{ url: '/api/v1/prices', title: 'Current prices (JSON API)' }],
       'text/markdown': [{ url: '/llms-full.txt', title: 'Complete pricing table (markdown)' }],
+      // Feed autodiscovery. A reader handed only the site address finds the
+      // changelog through this, which is the only way most subscriptions ever
+      // start — nobody types /feed.xml.
+      'application/rss+xml': [
+        { url: '/feed.xml', title: 'CostOfToken — new models and price changes' },
+      ],
     },
   },
   openGraph: {
@@ -72,6 +78,19 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         inherit, so anything added outside a card is legible by default.
       */}
       <body className="min-h-screen bg-[#F7F6F4] text-neutral-900 antialiased">
+        {/*
+          Feed autodiscovery, declared here rather than in `metadata.alternates`
+          because a page that sets its own `alternates` (every page does, for
+          its canonical URL) replaces the layout's entry wholesale — which
+          silently dropped this link from all of them. Rendered as an element,
+          React hoists it into <head> on every route instead.
+        */}
+        <link
+          rel="alternate"
+          type="application/rss+xml"
+          title={`${SITE.name} — new models and price changes`}
+          href="/feed.xml"
+        />
         {/* In the layout so every route carries the same navigation. */}
         <SiteNav />
         {children}
