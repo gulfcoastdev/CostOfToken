@@ -2,6 +2,10 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { parseTieredCell } from '../src/pipeline/extractors/google.ts'
 import { openaiExtractor, splitModelQualifier } from '../src/pipeline/extractors/openai.ts'
+import {
+  createOpenRouterExtractor,
+  resetOpenRouterCache,
+} from '../src/pipeline/extractors/openrouter.ts'
 import { parseMarkdownTables } from '../src/pipeline/extractors/markdown-table.ts'
 import { findInPath, isNonStandardTier, parseTables } from '../src/pipeline/extractors/html-table.ts'
 import { decodeFlightPayload, extractModelObjects } from '../src/pipeline/extractors/xai.ts'
@@ -190,4 +194,97 @@ test('splitModelQualifier separates the id from its context qualifier', () => {
     modelId: 'gpt-5.6-sol',
     threshold: null,
   })
+})
+
+/**
+ * OpenRouter suffixes a model id with the routing tier it is priced under.
+ * Those rates are not comparable to a vendor's standard rate, which is the one
+ * thing this table promises, so they must not become rows.
+ */
+function catalogue(models: Array<Record<string, unknown>>) {
+  // The catalogue is memoised for the life of a run, so without this the
+  // second test in this file would silently extract the first one's fixture.
+  resetOpenRouterCache()
+  return {
+    fetchText: async () => JSON.stringify({ data: models }),
+  }
+}
+
+function orModel(id: string, prompt: string, completion: string) {
+  return { id, name: id, context_length: 200_000, pricing: { prompt, completion } }
+}
+
+test('the OpenRouter extractor skips batch-tier ids', async () => {
+  // Batch is asynchronous and typically half price. Publishing it beside
+  // another vendor's standard rate is exactly the comparison this project
+  // refuses to make — and it arrives looking like an ordinary model.
+  const ctx = catalogue([
+    orModel('minimax/minimax-m3', '0.0000003', '0.0000012'),
+    orModel('minimax/minimax-m3:batch', '0.00000015', '0.0000006'),
+  ])
+
+  const models = await createOpenRouterExtractor('minimax', ['minimax']).extract(ctx)
+
+  assert.deepEqual(
+    models.map((m) => m.modelId),
+    ['minimax-m3'],
+  )
+})
+
+test('the OpenRouter extractor skips free-tier ids', async () => {
+  // A ":free" id is the same model under a rate-limited free route, and it
+  // usually has a paid twin in the catalogue. Importing it would list the
+  // model twice and claim one of them costs nothing.
+  const ctx = catalogue([
+    orModel('minimax/minimax-m3', '0.0000003', '0.0000012'),
+    orModel('minimax/minimax-m3:free', '0', '0'),
+  ])
+
+  const models = await createOpenRouterExtractor('minimax', ['minimax']).extract(ctx)
+
+  assert.deepEqual(
+    models.map((m) => m.modelId),
+    ['minimax-m3'],
+  )
+})
+
+test('the OpenRouter extractor keeps capability variants, which are not tiers', async () => {
+  // ":thinking" is a different model with its own real price, not a discount
+  // on an existing one, so it stays.
+  const ctx = catalogue([
+    orModel('qwen/qwen-plus-2025-07-28', '0.0000004', '0.0000012'),
+    orModel('qwen/qwen-plus-2025-07-28:thinking', '0.0000004', '0.0000012'),
+  ])
+
+  const models = await createOpenRouterExtractor('alibaba', ['qwen']).extract(ctx)
+
+  assert.deepEqual(models.map((m) => m.modelId).sort(), [
+    'qwen-plus-2025-07-28',
+    'qwen-plus-2025-07-28:thinking',
+  ])
+})
+
+test('every fallback extractor names a provider we actually define', async () => {
+  // The registry and the provider list are edited separately; a slug that
+  // exists in one and not the other silently produces a provider with no
+  // models, or models the site cannot attribute.
+  const { FALLBACK_EXTRACTORS, FIRST_PARTY_EXTRACTORS } = await import(
+    '../src/pipeline/extractors/index.ts'
+  )
+  const { isKnownProvider } = await import('../src/pipeline/providers.ts')
+
+  for (const extractor of [...FIRST_PARTY_EXTRACTORS, ...FALLBACK_EXTRACTORS]) {
+    assert.ok(isKnownProvider(extractor.providerSlug), `unknown provider ${extractor.providerSlug}`)
+  }
+})
+
+test('minimax is tracked', async () => {
+  const { PROVIDER_BY_SLUG } = await import('../src/pipeline/providers.ts')
+  const { ALL_EXTRACTORS } = await import('../src/pipeline/extractors/index.ts')
+
+  assert.ok(PROVIDER_BY_SLUG.has('minimax'), 'minimax is missing from PROVIDERS')
+  assert.ok(
+    ALL_EXTRACTORS.some((e) => e.providerSlug === 'minimax'),
+    'minimax has no extractor',
+  )
 })

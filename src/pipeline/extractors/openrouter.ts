@@ -77,6 +77,7 @@ export function createOpenRouterExtractor(providerSlug: string, vendors: string[
 
         const modelId = rest.join('/') || entry.id
         if (!modelId) continue
+        if (isRoutingTier(modelId)) continue
 
         const input = perTokenToPerMillion(entry.pricing?.prompt)
         const output = perTokenToPerMillion(entry.pricing?.completion)
@@ -117,6 +118,31 @@ export function createOpenRouterExtractor(providerSlug: string, vendors: string[
       return [...models.values()]
     },
   }
+}
+
+/**
+ * Routing tiers, which OpenRouter marks with a suffix on the model id.
+ *
+ * These are not separate models — they are the same model billed under a
+ * different route, and their rates are not comparable to a vendor's standard
+ * rate, which is the only thing this table publishes:
+ *
+ *  - `:batch` is asynchronous and typically half price. It arrives looking
+ *    like an ordinary model, so nothing but this check keeps a half-price row
+ *    out of a table of standard rates. `kimi-k2.7-code:batch` was published
+ *    that way before this existed.
+ *  - `:free` is a rate-limited free route, and usually has a paid twin in the
+ *    catalogue — importing it lists the same model twice and claims one copy
+ *    costs nothing, which breaks the promise that 0 means genuinely free.
+ *
+ * Capability variants such as `:thinking` are deliberately kept: those are
+ * different models with their own real prices, not a discount on an existing
+ * one.
+ */
+const ROUTING_TIER_SUFFIX = /:(batch|free)$/i
+
+function isRoutingTier(modelId: string): boolean {
+  return ROUTING_TIER_SUFFIX.test(modelId)
 }
 
 /** OpenRouter quotes USD per single token as a decimal string. */

@@ -75,6 +75,17 @@ export const PROVIDERS: readonly ProviderDefinition[] = [
     region: 'cn',
   },
   {
+    // No machine-readable first-party source: minimax.io/price is a
+    // client-rendered SPA whose HTML contains model names but not a single
+    // price, and appending `.md` returns the same shell. Priced via the
+    // OpenRouter catalogue until that changes.
+    slug: 'minimax',
+    name: 'MiniMax',
+    website: 'https://www.minimax.io',
+    pricingUrl: 'https://www.minimax.io/price',
+    region: 'cn',
+  },
+  {
     slug: 'baidu',
     name: 'Baidu (ERNIE)',
     website: 'https://cloud.baidu.com',
