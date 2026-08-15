@@ -118,7 +118,7 @@ const SORT_KEYS: SortKey[] = SORT_LABELS.map((option) => option.value)
  * are often billed per image or per second rather than per token.
  */
 const TYPE_LABELS: Record<string, string> = {
-  chat: 'Chat & text',
+  general: 'General / chat',
   embedding: 'Embeddings',
   moderation: 'Moderation',
   tts: 'Text to speech',
@@ -199,7 +199,7 @@ export function PriceExplorer({ rows, providers, updatedAt, providerSlugs }: Exp
    * other types are one control away rather than removed: they are real
    * models with real prices, they are simply not comparable to chat models.
    */
-  const [modelType, setModelType] = useState<string>('chat')
+  const [modelType, setModelType] = useState<string>('general')
   const [under1, setUnder1] = useState(false)
   const [million, setMillion] = useState(false)
   const [search, setSearch] = useState('')
@@ -585,7 +585,7 @@ export function PriceExplorer({ rows, providers, updatedAt, providerSlugs }: Exp
         image or per second rather than per token. Ranking them beside chat
         models without a word would repeat the fault this filter fixed.
       */}
-      {modelType !== 'chat' && modelType !== 'all' && (
+      {modelType !== 'general' && modelType !== 'all' && (
         <p role="status" className="mb-3 rounded-lg bg-amber-50 px-3 py-2 text-[13px] text-amber-900">
           Showing <strong>{typeLabel(modelType)}</strong> models. Their pricing is not comparable to
           chat models — many have no output price, and some are billed per request rather than per

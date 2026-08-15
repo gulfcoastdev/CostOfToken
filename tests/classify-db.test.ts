@@ -25,7 +25,7 @@ process.env.NEXT_PUBLIC_SITE_URL ??= 'https://example.test'
  */
 const hasDatabase = Boolean(process.env.DATABASE_URL || process.env.POSTGRES_URL)
 
-const GENERATIVE = 'chat'
+const GENERATIVE = 'general'
 
 describe('classification across the catalogue', { skip: hasDatabase ? false : 'no DATABASE_URL set' }, () => {
   let sql: typeof import('../src/lib/db.ts').sql
@@ -80,7 +80,7 @@ describe('classification across the catalogue', { skip: hasDatabase ? false : 'n
   test('the non-generative models are actually found', async () => {
     // The bug this feature exists to fix: 32 models that cannot generate text
     // were sitting in the default price ranking. They must now be identified —
-    // either typed as something non-chat, or flagged for review.
+    // either typed as something non-general, or flagged for review.
     const rows = await sql<Array<{ model_id: string; model_type: string | null }>>`
       select model_id, model_type from models
        where is_active
@@ -91,7 +91,7 @@ describe('classification across the catalogue', { skip: hasDatabase ? false : 'n
     assert.deepEqual(
       rows.map((r) => r.model_id),
       [],
-      'these look non-generative but were typed as chat',
+      'these look non-generative but were typed as general-purpose',
     )
   })
 

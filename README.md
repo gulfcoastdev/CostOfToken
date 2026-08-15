@@ -186,7 +186,7 @@ refuse to guess:
 | 1 | A decision in `data/overrides.ts` | that type, `manual` |
 | 2 | Non-chat name hint **and** no output price | that type, `derived` |
 | 3 | Non-chat name hint **and** an output price | flagged, left untyped |
-| 4 | No hint **and** priced for input and output | `chat`, `derived` |
+| 4 | No hint **and** priced for input and output | `general`, `derived` |
 | 5 | Anything else | flagged |
 
 Rule 3 is the whole point. A name alone never decides anything — that is
@@ -215,7 +215,7 @@ describes each model in prose ("Our 2.5 Flash text-to-speech audio model").
 settles whether it is a generator that reads images or a pure extraction
 endpoint, and flagged is a better answer than a guess.
 
-The table and calculator default to `chat`; other types are one control away,
+The table and calculator default to `general`; other types are one control away,
 labelled with the fact that their pricing is not comparable. **The public API
 default is unchanged** — it still returns every model, with `model_type` as an
 additive field and `?type=` as an opt-in filter, because dropping rows from a

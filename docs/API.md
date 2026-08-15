@@ -68,7 +68,7 @@ Current prices for all tracked models.
 | Param | Type | Notes |
 | --- | --- | --- |
 | `provider` | string | Repeatable or comma-separated: `?provider=openai,xai` |
-| `type` | enum | Repeatable or comma-separated: `chat`, `embedding`, `moderation`, `tts`, `asr`, `image_gen`, `video_gen`, `ocr`, `realtime`, `other`. Unknown values return `400` |
+| `type` | enum | Repeatable or comma-separated: `general`, `embedding`, `moderation`, `tts`, `asr`, `image_gen`, `video_gen`, `ocr`, `realtime`, `other`. Unknown values return `400` |
 | `modality` | string | `text`, `vision`, `audio`, `video`, `image` — **unreliable**, see below |
 | `tag` | string | `flagship`, `fast`, `reasoning`, `coding`, `vision`, … |
 | `q` | string | Substring match on model id or display name |
@@ -113,11 +113,11 @@ from a published response would break existing callers, so the filter is
 opt-in:
 
 ```bash
-curl 'https://costoftoken.com/api/v1/prices?type=chat'          # text generators only
+curl 'https://costoftoken.com/api/v1/prices?type=general'       # text generators only
 curl 'https://costoftoken.com/api/v1/prices?type=embedding,ocr' # several types
 ```
 
-The site's own table and calculator default to `chat`, because ranking an
+The site's own table and calculator default to `general`, because ranking an
 embedding or moderation endpoint by cost-per-token compares nothing — before
 this existed, a moderation endpoint was the 4th cheapest model listed. Prices
 are only comparable within a type: embeddings and moderation models have no

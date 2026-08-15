@@ -142,7 +142,7 @@ describe('public API', { skip: hasDatabase ? false : 'no DATABASE_URL set' }, ()
     assert.equal(response.status, 200)
     const types = new Set(body.data.map((row: { model_type: string | null }) => row.model_type))
     assert.ok(types.size > 1, 'the default response must still contain non-chat models')
-    assert.ok(types.has('chat'))
+    assert.ok(types.has('general'))
 
     for (const row of body.data) {
       assert.ok('model_type' in row, `${row.model_id} is missing model_type`)

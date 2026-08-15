@@ -84,9 +84,23 @@ alter table models add column if not exists description text;
 --
 -- `other` is different from null: it means determined, and none of the known
 -- kinds.
-alter table models add column if not exists model_type text
+alter table models add column if not exists model_type text;
+
+-- Renamed from 'chat' to 'general': the value names the role a model plays,
+-- and most of these are general-purpose text models rather than chat
+-- interfaces specifically.
+--
+-- Order matters. The constraint has to come off before the data can move —
+-- the old one only permits 'chat', so updating first fails on its own check —
+-- and the new one goes on after. Both steps are idempotent: a second run
+-- matches no rows and re-adds the same constraint.
+alter table models drop constraint if exists models_model_type_check;
+
+update models set model_type = 'general' where model_type = 'chat';
+
+alter table models add constraint models_model_type_check
   check (model_type is null or model_type in (
-    'chat', 'embedding', 'moderation', 'tts', 'asr',
+    'general', 'embedding', 'moderation', 'tts', 'asr',
     'image_gen', 'video_gen', 'ocr', 'realtime', 'other'
   ));
 

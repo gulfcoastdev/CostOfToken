@@ -38,7 +38,7 @@ export interface WorkloadPreset {
 /** Starting points, not claims about what anyone's traffic looks like. */
 export const PRESETS: WorkloadPreset[] = [
   {
-    id: 'chat',
+    id: 'general',
     label: 'Chat assistant',
     description: 'Short prompts, conversational replies, steady traffic',
     inputTokens: 1_500,
@@ -99,7 +99,7 @@ export function WorkloadCalculator({ rows }: { rows: PriceRowV1[] }) {
   const [outputTokens, setOutputTokens] = useState(PRESETS[0].outputTokens)
   const [requests, setRequests] = useState(PRESETS[0].requestsPerMonth)
   const [cachedShare, setCachedShare] = useState(PRESETS[0].cachedShare)
-  const [activePreset, setActivePreset] = useState<string>('chat')
+  const [activePreset, setActivePreset] = useState<string>('general')
   const [ready, setReady] = useState(false)
 
   // Read the URL after mount so the page itself stays cacheable.

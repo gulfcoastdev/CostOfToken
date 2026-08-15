@@ -6,7 +6,7 @@
 
 ```ts
 export type ModelType =
-  | 'chat' | 'embedding' | 'moderation' | 'tts' | 'asr'
+  | 'general' | 'embedding' | 'moderation' | 'tts' | 'asr'
   | 'image_gen' | 'video_gen' | 'ocr' | 'realtime' | 'other'
 
 export interface Classification {
@@ -49,8 +49,8 @@ export function classifyModel(model: NormalizedModel): Classification
 
 | Surface | Default | Escape |
 |---------|---------|--------|
-| Main table | `model_type = 'chat'` | Type control lists every type present, plus the review set |
-| Calculator / value rankings | `model_type = 'chat'` only | none — ranking a non-generator by token cost is meaningless |
+| Main table | `model_type = 'general'` | Type control lists every type present, plus the review set |
+| Calculator / value rankings | `model_type = 'general'` only | none — ranking a non-generator by token cost is meaningless |
 | Model page | unchanged; shows its type | — |
 
 **Guarantees**

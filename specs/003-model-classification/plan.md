@@ -6,7 +6,7 @@
 
 ## Summary
 
-Give every model a `model_type`, default the table and calculator to `chat`,
+Give every model a `model_type`, default the table and calculator to `general`,
 and keep everything else reachable.
 
 The classifier is deliberately small: a short list of ordered rules over
@@ -65,7 +65,7 @@ no network call and no breaking change.
 | Rule precedence: manual override wins | `tests/classify.test.ts` | `src/pipeline/classify.ts` |
 | Non-chat pattern + no output price → typed | `tests/classify.test.ts` | same |
 | Non-chat pattern + has output price → `needs_review`, type null | `tests/classify.test.ts` | same |
-| No non-chat signal + priced both ways → `chat` | `tests/classify.test.ts` | same |
+| No non-chat signal + priced both ways → `general` | `tests/classify.test.ts` | same |
 | Whole catalogue: every model typed or flagged | `tests/classify-db.test.ts` | pipeline wiring |
 | API default response unchanged; `type` filter works | `tests/api.test.ts` | route + query changes |
 

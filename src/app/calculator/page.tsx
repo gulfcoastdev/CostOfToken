@@ -65,7 +65,7 @@ export default async function CalculatorPage() {
       offset: 0,
       sort: 'input',
       direction: 'asc',
-      modelType: 'chat',
+      modelType: 'general',
     })
     rows = page.rows
   } catch {

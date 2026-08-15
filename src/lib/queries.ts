@@ -42,7 +42,7 @@ import type {
 export interface PriceFilters {
   provider?: string[]
   /**
-   * Restrict to one kind of model. The site's own views pass 'chat', because a
+   * Restrict to one kind of model. The site's own views pass 'general', because a
    * cost-per-token ranking that includes an embedding or moderation endpoint
    * is not a ranking of anything. The public API deliberately leaves this
    * unset by default — dropping models from a published response would be a

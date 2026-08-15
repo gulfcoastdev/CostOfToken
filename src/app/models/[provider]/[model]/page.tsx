@@ -22,7 +22,7 @@ import { comparisonsForModel } from '../../../../../data/comparisons.ts'
 export const revalidate = 3600
 
 const MODEL_TYPE_LABELS: Record<string, string> = {
-  chat: 'chat & text',
+  general: 'general-purpose',
   embedding: 'embedding',
   moderation: 'moderation',
   tts: 'text-to-speech',
@@ -199,7 +199,7 @@ export default async function ModelPage({
           output price at all, and image and speech models are frequently
           billed per image or per second.
         */}
-        {row.model_type !== null && row.model_type !== 'chat' && (
+        {row.model_type !== null && row.model_type !== 'general' && (
           <p className="mt-3 max-w-3xl rounded-lg bg-amber-50 px-3 py-2 text-[13px] text-amber-900">
             This is {article(MODEL_TYPE_LABELS[row.model_type] ?? row.model_type)}{' '}
             <strong>{MODEL_TYPE_LABELS[row.model_type] ?? row.model_type}</strong> model. Its

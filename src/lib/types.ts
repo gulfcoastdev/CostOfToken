@@ -13,7 +13,8 @@ export type SourceKind = 'scrape' | 'api' | 'catalog'
  * which is part of why its values are untrustworthy.
  */
 export type ModelType =
-  | 'chat'
+  /** General-purpose text generation — the role most models play, and the default view. */
+  | 'general'
   | 'embedding'
   | 'moderation'
   | 'tts'
@@ -25,7 +26,7 @@ export type ModelType =
   | 'other'
 
 export const MODEL_TYPES: readonly ModelType[] = [
-  'chat',
+  'general',
   'embedding',
   'moderation',
   'tts',
@@ -41,9 +42,9 @@ export function isModelType(value: string): value is ModelType {
   return (MODEL_TYPES as readonly string[]).includes(value)
 }
 
-/** Only text generators belong in a cost-per-token ranking. */
+/** Only general-purpose text generators belong in a cost-per-token ranking. */
 export function isGenerative(type: ModelType | null): boolean {
-  return type === 'chat'
+  return type === 'general'
 }
 
 export type ClassificationStatus = 'confirmed' | 'needs_review'

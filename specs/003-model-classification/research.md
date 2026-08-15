@@ -35,7 +35,7 @@ decisions — and must be honest about which of those it used.
 | 1 | A human decision exists in `data/overrides.ts` | that type | `manual` |
 | 2 | Non-chat name pattern **and** no output price | that type | `derived` |
 | 3 | Non-chat name pattern **and** an output price exists | `null` type, flagged | `needs_review` |
-| 4 | No non-chat signal **and** priced for both input and output | `chat` | `derived` |
+| 4 | No non-chat signal **and** priced for both input and output | `general` | `derived` |
 | 5 | Anything else | `null` type, flagged | `needs_review` |
 
 **Rationale**: Rules 2 and 3 are the heart of it. A name pattern alone never
@@ -57,7 +57,7 @@ evidence, not a default.
 - **17 flagged for review**: the image models, `glm-ocr`, and the Google TTS
   and native-audio models — all of which have an output price, so the name
   pattern stands alone and is not trusted.
-- **~193 typed `chat`**.
+- **~193 typed `general`**.
 
 Seventeen flagged models is a tractable one-time human pass through
 `overrides.ts`, and it is the honest outcome. Guessing them would reproduce the
@@ -76,7 +76,7 @@ exact fault this feature exists to fix.
 
 ## R3 — What the default view filters on
 
-**Decision**: The site's default views show `model_type = 'chat'`. Models that
+**Decision**: The site's default views show `model_type = 'general'`. Models that
 are flagged are **not** in the default view, and are reachable alongside the
 other types.
 

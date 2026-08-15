@@ -93,10 +93,10 @@ export function classifyModel(
 
   // Rule 4 — no non-chat signal, and priced like a generator on both sides.
   if (billsForInput && billsForOutput) {
-    return { modelType: 'chat', status: 'confirmed', source: 'derived', note: null }
+    return { modelType: 'general', status: 'confirmed', source: 'derived', note: null }
   }
 
-  // Rule 5 — not enough to say. Deliberately not 'chat': a model with no
+  // Rule 5 — not enough to say. Deliberately not 'general': a model with no
   // output price is not a cheap text generator, it is a different kind of
   // thing, and guessing here is exactly what puts a moderation endpoint at the
   // top of a cheapest-models ranking.

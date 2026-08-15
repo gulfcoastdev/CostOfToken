@@ -47,7 +47,7 @@ select classification_status, model_type, count(*)
 ```
 
 **Expect**: no row with `classification_status = 'confirmed'` and a null
-`model_type`. Roughly 193 `chat`, 15 confirmed non-chat, 17 flagged. (SC-002)
+`model_type`. Roughly 193 `general`, 15 confirmed non-chat, 17 flagged. (SC-002)
 
 ## 4. Nothing was deleted
 

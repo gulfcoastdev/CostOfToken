@@ -9,7 +9,7 @@ created, no column is dropped, nothing is backfilled destructively.
 
 | Value | Means |
 |-------|-------|
-| `chat` | Generates text in response to a prompt. The default view |
+| `general` | Generates text in response to a prompt. The default view |
 | `embedding` | Returns vectors |
 | `moderation` | Returns classifications, not content |
 | `tts` | Text to speech |
@@ -88,7 +88,7 @@ The pure classifier takes what the pipeline already has:
 | `modelId` | Non-chat name patterns (never sufficient alone) |
 | `providerSlug` | Looking up a manual override |
 | `pricing.inputPrice` / `outputPrice` | Price-shape evidence |
-| declared modalities, where a source provides them | Confirming `chat` |
+| declared modalities, where a source provides them | Confirming `general` |
 
 Output:
 
@@ -112,7 +112,7 @@ First match wins. See [research R2](./research.md#r2--the-rules).
 | 1 | Manual override present | override's | `confirmed` | `manual` |
 | 2 | Non-chat pattern **and** no output price | matched type | `confirmed` | `derived` |
 | 3 | Non-chat pattern **and** output price present | `null` | `needs_review` | `null` |
-| 4 | No non-chat pattern **and** input and output both priced | `chat` | `confirmed` | `derived` |
+| 4 | No non-chat pattern **and** input and output both priced | `general` | `confirmed` | `derived` |
 | 5 | Otherwise | `null` | `needs_review` | `null` |
 
 ### Non-chat patterns
@@ -141,7 +141,7 @@ Measured 2026-08-15, 225 active models:
 
 | Bucket | Count | Examples |
 |--------|------:|----------|
-| `chat`, confirmed | ~193 | the bulk of the catalogue |
+| `general`, confirmed | ~193 | the bulk of the catalogue |
 | Non-chat, confirmed (rule 2) | 15 | `text-embedding-3-small`, `omni-moderation-latest`, `gpt-realtime`, `tts-1`, `gemini-embedding` |
 | Flagged (rule 3) | 17 | `gpt-image-1`, `gemini-3-pro-image`, `glm-ocr`, `gemini-2.5-flash-preview-tts` |
 
@@ -158,10 +158,10 @@ Asserted by tests before the code exists:
 1. A manual override always wins, whatever the other signals say.
 2. Non-chat pattern + no output price yields that type, `confirmed`.
 3. Non-chat pattern + output price yields `null` and `needs_review`.
-4. No non-chat pattern + both prices yields `chat`, `confirmed`.
-5. A model with neither price is `needs_review`, never `chat`.
+4. No non-chat pattern + both prices yields `general`, `confirmed`.
+5. A model with neither price is `needs_review`, never `general`.
 6. Across the whole catalogue, every model is typed or flagged — no model has
    `model_type IS NULL` with `classification_status = 'confirmed'`.
-7. No cost ranking contains a model whose `model_type` is not `chat`.
+7. No cost ranking contains a model whose `model_type` is not `general`.
 8. `/api/v1/prices` with no new parameters returns the same model count as
    before the change.

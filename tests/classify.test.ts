@@ -149,25 +149,25 @@ test('a model with no non-chat signal and both prices is a text generator', () =
   // generated text.
   const result = classifyModel(model())
 
-  assert.equal(result.modelType, 'chat')
+  assert.equal(result.modelType, 'general')
   assert.equal(result.status, 'confirmed')
   assert.equal(result.source, 'derived')
 })
 
-test('a free chat model is still chat', () => {
+test('a free general-purpose model is still general', () => {
   // Zhipu's GLM Flash models are genuinely $0. Zero is a price, not a missing
   // one — the distinction the whole site rests on.
   const base = model({ modelId: 'glm-4.7-flash', providerSlug: 'zhipu' })
   const free = { ...base, pricing: { ...base.pricing, inputPrice: 0, outputPrice: 0 } }
 
-  assert.equal(classifyModel(free).modelType, 'chat')
+  assert.equal(classifyModel(free).modelType, 'general')
 })
 
 // ---------------------------------------------------------------------------
 // Rule 5 — everything else
 // ---------------------------------------------------------------------------
 
-test('a model with no output price and no name hint is flagged, never chat', () => {
+test('a model with no output price and no name hint is flagged, never general', () => {
   const result = classifyModel(noOutput({ modelId: 'mystery-model-2' }))
 
   assert.equal(result.modelType, null)
