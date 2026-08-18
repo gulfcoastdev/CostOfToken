@@ -13,7 +13,6 @@ import {
 import { compareHref, MAX_COMPARED, modelKey } from '@/lib/compare.ts'
 import { resolveTypeFilter, type PriceRowV1 } from '@/lib/types.ts'
 import { DEFAULT_FEATURED_MODEL_IDS, MAX_FEATURED } from '../../data/featured.ts'
-import { FeaturedModels } from './featured-models.tsx'
 import { ModelCard, ModelDetails, StarButton } from './model-card.tsx'
 import { providerColor, SOURCE_LABELS } from './provider-colors.ts'
 import {
@@ -200,6 +199,21 @@ export function PriceExplorer({ rows, providers, updatedAt, providerSlugs }: Exp
    * models with real prices, they are simply not comparable to chat models.
    */
   const [modelType, setModelType] = useState<string>('general')
+  /*
+   * How much of the catalogue the list opens on.
+   *
+   * 'popular' shows the curated set — a flagship and a cheap option from each
+   * major provider — instead of all 191 general models. On a phone the full
+   * list was roughly four thousand pixels of cards that opened on
+   * GLM-4.5-Flash, a model almost nobody arrives looking for, and it sat below
+   * a second list showing the same kind of thing. One short list of
+   * recognisable names is the view that answers "what does this cost".
+   *
+   * 'all' is one tap away and every filter still reaches the whole catalogue —
+   * see effectiveScope, which widens automatically rather than letting this
+   * default hide a model someone actually searched for.
+   */
+  const [scope, setScope] = useState<'popular' | 'all'>('popular')
   const [under1, setUnder1] = useState(false)
   const [million, setMillion] = useState(false)
   const [search, setSearch] = useState('')
@@ -331,15 +345,6 @@ export function PriceExplorer({ rows, providers, updatedAt, providerSlugs }: Exp
     [pins, persistPins],
   )
 
-  // Resolve ids to rows, preserving the pinned order. Ids that no longer exist
-  // are dropped rather than rendered as blanks.
-  const featuredRows = useMemo(() => {
-    const byId = new Map(rows.map((row) => [row.model_id, row]))
-    return effectivePins
-      .map((id) => byId.get(id))
-      .filter((row): row is ExplorerRow => row !== undefined)
-  }, [rows, effectivePins])
-
   const pinnedSet = useMemo(() => new Set(effectivePins), [effectivePins])
 
   // --- filtering ----------------------------------------------------------
@@ -351,7 +356,22 @@ export function PriceExplorer({ rows, providers, updatedAt, providerSlugs }: Exp
    */
   const effectiveType = useMemo(() => resolveTypeFilter(rows, modelType), [rows, modelType])
 
-  const filtered = useMemo(() => {
+  /*
+   * Any deliberate narrowing widens the scope back to the whole catalogue.
+   *
+   * Without this, searching "gpt-4.1" from the default view would look through
+   * ten pinned models, find nothing, and report that a model the site holds
+   * does not exist. A default that shortens a browse is useful; a default that
+   * silently answers a specific question wrongly is the bug we just spent a
+   * day on. Someone who has typed a query or picked a provider is no longer
+   * browsing, so the short list has done its job.
+   */
+  const isNarrowing =
+    selectedProviders.length > 0 || flagshipOnly || under1 || million || search.trim() !== ''
+  const effectiveScope = isNarrowing ? 'all' : scope
+
+  /** Everything passing the real filters, before the popular/all scope applies. */
+  const matched = useMemo(() => {
     const query = search.trim().toLowerCase()
     return rows.filter((row) => {
       if (selectedProviders.length > 0 && !selectedProviders.includes(row.provider)) return false
@@ -370,6 +390,14 @@ export function PriceExplorer({ rows, providers, updatedAt, providerSlugs }: Exp
       return true
     })
   }, [rows, selectedProviders, effectiveType, flagshipOnly, under1, million, search])
+
+  const filtered = useMemo(() => {
+    if (effectiveScope === 'all') return matched
+    // Set membership rather than the pinned order: the list keeps whatever sort
+    // the reader chose, and the popular set only decides who is in it.
+    const popular = new Set(effectivePins)
+    return matched.filter((row) => popular.has(row.model_id))
+  }, [matched, effectiveScope, effectivePins])
 
   /** Types actually present in the data, so the control never offers an empty view. */
   const availableTypes = useMemo(() => {
@@ -457,9 +485,19 @@ export function PriceExplorer({ rows, providers, updatedAt, providerSlugs }: Exp
   }, [scored, sortKey, sortDirection])
 
   // --- aggregates ---------------------------------------------------------
+  /*
+   * Computed from `matched`, not `filtered` — the popular scope deliberately
+   * does not move these numbers.
+   *
+   * The curated set is ten flagships, so averaging it would report the market
+   * as roughly twice its real price and would change the headline figure
+   * purely because of how the page happens to open. Provider and search
+   * filters do still narrow it: those are a reader asking about a subset,
+   * which is a different thing from a default deciding what to show first.
+   */
   const stats = useMemo(() => {
-    const inputs = filtered.map((r) => r.input).filter((v): v is number => v !== null)
-    const outputs = filtered.map((r) => r.output).filter((v): v is number => v !== null)
+    const inputs = matched.map((r) => r.input).filter((v): v is number => v !== null)
+    const outputs = matched.map((r) => r.output).filter((v): v is number => v !== null)
     const mean = (values: number[]) =>
       values.length > 0 ? values.reduce((sum, v) => sum + v, 0) / values.length : null
     const avgInput = mean(inputs)
@@ -469,12 +507,13 @@ export function PriceExplorer({ rows, providers, updatedAt, providerSlugs }: Exp
       avgOutput,
       avgBlended: avgInput !== null && avgOutput !== null ? (avgInput + avgOutput) / 2 : null,
     }
-  }, [filtered])
+  }, [matched])
 
-  // Page-level trend: the mean input price across the filtered set at each
-  // historical sample point.
+  // Page-level trend: the mean input price at each historical sample point.
+  // Over `matched` for the same reason as the averages above — the trend is a
+  // statement about prices, not about which rows the page opened on.
   const trendSeries = useMemo(() => {
-    const withTrend = filtered.filter((r) => r.trend && r.trend.series.length > 0)
+    const withTrend = matched.filter((r) => r.trend && r.trend.series.length > 0)
     if (withTrend.length === 0) return []
     const points = withTrend[0].trend?.series.length ?? 0
     return Array.from({ length: points }, (_, index) => {
@@ -483,7 +522,7 @@ export function PriceExplorer({ rows, providers, updatedAt, providerSlugs }: Exp
         .filter((v): v is number => v !== undefined)
       return values.length > 0 ? values.reduce((sum, v) => sum + v, 0) / values.length : 0
     })
-  }, [filtered])
+  }, [matched])
 
   const trendPct =
     trendSeries.length >= 2 && trendSeries[0] > 0
@@ -574,12 +613,13 @@ export function PriceExplorer({ rows, providers, updatedAt, providerSlugs }: Exp
     <div className="mx-auto max-w-[1120px] px-5 pb-14 pt-7">
       <Header updatedAt={updatedAt} />
 
-      <FeaturedModels
-        rows={featuredRows}
-        isCustom={isCustomPins}
-        onUnpin={togglePin}
-        onReset={() => persistPins(null)}
-      />
+      {/*
+        The Popular models panel used to sit here, above a second list showing
+        the same kind of thing. Its job is now the main list's default scope,
+        so the page has one list instead of two — see the `scope` state. The
+        pinned set it rendered is unchanged and still editable, via the star on
+        each row rather than a separate panel.
+      */}
 
       {pinNotice && (
         <p role="status" className="mb-3 text-[13px] text-amber-400">
@@ -621,7 +661,7 @@ export function PriceExplorer({ rows, providers, updatedAt, providerSlugs }: Exp
       )}
 
       <div className="mb-4 flex flex-wrap gap-3.5">
-        <StatsCard stats={stats} count={filtered.length} />
+        <StatsCard stats={stats} count={matched.length} />
         <TrendCard series={trendSeries} pct={trendPct} />
       </div>
 
@@ -796,9 +836,47 @@ export function PriceExplorer({ rows, providers, updatedAt, providerSlugs }: Exp
 
       <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-2">
         <p className="text-[13px] text-neutral-600">
-          Showing {sorted.length} of {rows.length} models · select one for details, or tick up to{' '}
-          {MAX_COMPARED} to compare
+          {effectiveScope === 'popular' ? (
+            <>
+              Showing <strong>{sorted.length} popular</strong> of {matched.length} models
+            </>
+          ) : (
+            <>Showing {sorted.length} of {rows.length} models</>
+          )}{' '}
+          · select one for details, or tick up to {MAX_COMPARED} to compare
         </p>
+
+        {/*
+          Says what is being withheld and how much, rather than leaving the
+          reader to infer the site only knows ten models. `isNarrowing` hides
+          it because the scope is not what is deciding the list at that point,
+          and offering to "show all 191" next to a provider filter would be
+          claiming to do something it does not do.
+        */}
+        {!isNarrowing && (
+          <button
+            type="button"
+            onClick={() => setScope(scope === 'popular' ? 'all' : 'popular')}
+            className="text-[13px] font-medium text-emerald-700 underline underline-offset-2 hover:text-emerald-800"
+          >
+            {scope === 'popular' ? `Show all ${matched.length} models` : 'Show popular only'}
+          </button>
+        )}
+
+        {/*
+          The old panel owned this; without it a reader who edited the popular
+          set by starring rows would have no way back to the curated one.
+        */}
+        {isCustomPins && effectiveScope === 'popular' && (
+          <button
+            type="button"
+            onClick={() => persistPins(null)}
+            className="text-[13px] font-medium text-neutral-600 underline underline-offset-2 hover:text-neutral-800"
+          >
+            Reset to defaults
+          </button>
+        )}
+
         {hasFilters && (
           <button
             type="button"
