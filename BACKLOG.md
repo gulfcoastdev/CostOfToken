@@ -250,6 +250,42 @@ worth doing when the surface it protects starts changing often.
 
 ## Operational hardening
 
+- [ ] **Alert when the daily pipeline stops running**
+      Nothing currently notices if the cron stops firing. The site's entire
+      claim is up-to-date pricing, so silent staleness is the failure that
+      matters most, and it is the one failure no existing check covers.
+
+      *Read the right signal.* `price_history` going quiet is **not** a
+      symptom — the trigger only writes when a number actually moves, so days
+      of silence there are normal and correct. The field that proves a run
+      happened is `prices.updated_at`, which bumps every run because the
+      upsert always rewrites `raw_data` and `effective_date`. Monitoring the
+      wrong one of these produces false alarms; it already did once.
+
+      *What is already covered.* `/api/cron/update-prices` returns 502 when
+      every provider failed, 409 when anomaly detection blocked a result, and
+      500 on a crash. Those are non-2xx invocations and land in Vercel's logs.
+      Whether anything actually *notifies* on them depends on project
+      notification settings — unconfirmed, worth checking in the dashboard
+      before building anything.
+
+      *The real blind spot.* None of that fires if the cron simply never runs:
+      a paused project, a `vercel.json` that did not deploy, a plan limit, a
+      rotated `CRON_SECRET`. All of those produce **silence**, and silence is
+      currently indistinguishable from success.
+
+      *Shape of the fix.* A dead-man's switch — alert on the absence of a
+      fresh run rather than on a failure event. The watcher has to live
+      outside Vercel, or it shares the failure mode it is meant to catch: the
+      cron route pings an external service on each success and that service
+      raises the alarm when a ping fails to arrive. A cheaper partial is a
+      staleness banner on `/sources` when the newest `prices.updated_at` is
+      more than ~36h old, but that only helps if someone looks.
+
+      *State when filed (2026-08-19):* production healthy, last run
+      2026-08-18 06:50 UTC, 226 models. This is preventive, not a live fire.
+
+
 - [ ] **Turn on Attack Challenge Mode** — Vercel → Project → Firewall.
       Available on Hobby, free, one toggle. It stops distributed abuse *at the
       edge*, before a request ever reaches a function — the layer application
