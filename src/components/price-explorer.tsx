@@ -11,9 +11,10 @@ import {
   formatRelativeTime,
 } from '@/lib/format.ts'
 import { compareHref, MAX_COMPARED, modelKey } from '@/lib/compare.ts'
+import { modelPath, providerPath } from '@/lib/seo.ts'
 import { resolveTypeFilter, type PriceRowV1 } from '@/lib/types.ts'
 import { DEFAULT_FEATURED_MODEL_IDS, MAX_FEATURED } from '../../data/featured.ts'
-import { ModelCard, ModelDetails, StarButton } from './model-card.tsx'
+import { ModelCard, ModelDetails, opensElsewhere, StarButton } from './model-card.tsx'
 import { providerColor, SOURCE_LABELS } from './provider-colors.ts'
 import {
   compareNullableNumbers,
@@ -635,10 +636,13 @@ export function PriceExplorer({ rows, providers, updatedAt, providerSlugs }: Exp
         models without a word would repeat the fault this filter fixed.
       */}
       {effectiveType !== 'general' && effectiveType !== 'all' && (
-        <p role="status" className="mb-3 rounded-lg bg-amber-50 px-3 py-2 text-[13px] text-amber-900">
-          Showing <strong>{typeLabel(effectiveType)}</strong> models. Their pricing is not comparable to
-          chat models — many have no output price, and some are billed per request rather than per
-          token.
+        <p
+          role="status"
+          className="mb-3 rounded-lg bg-amber-50 px-3 py-2 text-[13px] text-amber-900"
+        >
+          Showing <strong>{typeLabel(effectiveType)}</strong> models. Their pricing is not
+          comparable to chat models — many have no output price, and some are billed per request
+          rather than per token.
         </p>
       )}
 
@@ -647,8 +651,12 @@ export function PriceExplorer({ rows, providers, updatedAt, providerSlugs }: Exp
         for a model that exists, and is told it does not.
       */}
       {elsewhere && (
-        <p role="status" className="mb-3 rounded-lg bg-neutral-100 px-3 py-2 text-[13px] text-neutral-700">
-          No match under {typeLabel(effectiveType)}, but <strong>{elsewhere.modelId}</strong> exists under{' '}
+        <p
+          role="status"
+          className="mb-3 rounded-lg bg-neutral-100 px-3 py-2 text-[13px] text-neutral-700"
+        >
+          No match under {typeLabel(effectiveType)}, but <strong>{elsewhere.modelId}</strong> exists
+          under{' '}
           <button
             type="button"
             onClick={() => setModelType(elsewhere.type)}
@@ -841,7 +849,9 @@ export function PriceExplorer({ rows, providers, updatedAt, providerSlugs }: Exp
               Showing <strong>{sorted.length} popular</strong> of {matched.length} models
             </>
           ) : (
-            <>Showing {sorted.length} of {rows.length} models</>
+            <>
+              Showing {sorted.length} of {rows.length} models
+            </>
           )}{' '}
           · select one for details, or tick up to {MAX_COMPARED} to compare
         </p>
@@ -1626,10 +1636,17 @@ function PriceRow({
             />
             {/* The row is clickable for mouse users, but the toggle is a real
                 button so it's reachable and announced for keyboard users. */}
-            <button
-              type="button"
+            {/* A link, not a button. The model page is a real destination
+                and the home page is the strongest page pointing at it, so the
+                markup has to carry an href with the model's name as its anchor
+                text — a button is invisible to a crawler. A plain click still
+                opens the detail card, which is what the row is for. */}
+            <Link
+              href={modelPath(row.provider, row.model_id)}
               onClick={(event) => {
                 event.stopPropagation()
+                if (opensElsewhere(event)) return
+                event.preventDefault()
                 onToggle(row.model_id)
               }}
               aria-expanded={expanded}
@@ -1637,7 +1654,7 @@ function PriceRow({
               className="text-left font-semibold text-neutral-900 underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-emerald-600"
             >
               {row.display_name}
-            </button>
+            </Link>
             {isFree && (
               <span className="mt-0.5 whitespace-nowrap rounded-full bg-sky-50 px-1.5 py-0.5 text-[10px] font-bold text-sky-700">
                 Free
@@ -1651,13 +1668,19 @@ function PriceRow({
           </div>
         </td>
         <td className="whitespace-nowrap px-3 py-2.5">
-          <span className="inline-flex items-center gap-1.5 text-[13px] text-neutral-700">
+          {/* The row toggles the detail card; the provider is a real link out
+              to its hub, so its click must not also expand the row. */}
+          <Link
+            href={providerPath(row.provider)}
+            onClick={(event) => event.stopPropagation()}
+            className="inline-flex items-center gap-1.5 text-[13px] text-neutral-700 underline-offset-2 hover:text-emerald-700 hover:underline"
+          >
             <span
               className="inline-block h-2 w-2 shrink-0 rounded-full"
               style={{ background: providerColor(row.provider) }}
             />
             {row.provider_name}
-          </span>
+          </Link>
         </td>
         <td className="px-3 py-2.5 text-right font-semibold tabular-nums text-neutral-900">
           {formatPrice(row.input)}

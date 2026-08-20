@@ -22,3 +22,22 @@ export const SOURCE_LABELS: Record<string, string> = {
   api: 'Via OpenRouter',
   catalog: 'Catalog',
 }
+
+/**
+ * What kind of model this is, in the user's language.
+ *
+ * Shared by the model page and the explorer's detail card: both name the type
+ * to the reader, and two copies would drift the moment a type is added.
+ */
+export const MODEL_TYPE_LABELS: Record<string, string> = {
+  general: 'general-purpose',
+  embedding: 'embedding',
+  moderation: 'moderation',
+  tts: 'text-to-speech',
+  asr: 'speech-to-text',
+  image_gen: 'image generation',
+  video_gen: 'video generation',
+  ocr: 'OCR',
+  realtime: 'realtime audio',
+  other: 'specialised',
+}

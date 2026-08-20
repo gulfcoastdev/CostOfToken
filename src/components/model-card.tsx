@@ -1,8 +1,10 @@
 'use client'
 
+import Link from 'next/link'
 import { formatContext, formatPrice, formatRelativeTime } from '@/lib/format.ts'
+import { modelPath, providerPath } from '@/lib/seo.ts'
 import type { ExplorerRow } from './price-explorer.tsx'
-import { providerColor, SOURCE_LABELS } from './provider-colors.ts'
+import { MODEL_TYPE_LABELS, providerColor, SOURCE_LABELS } from './provider-colors.ts'
 import { Sparkline } from './sparkline.tsx'
 
 /**
@@ -27,6 +29,18 @@ export interface CardEntry {
 
 /** Comfortable minimum tap target. Below this, misses become common. */
 const TAP_TARGET = 'min-h-[44px] min-w-[44px]'
+
+/**
+ * Whether a click on a link asked for a new tab or window.
+ *
+ * The model name is a real link whose plain click opens the detail card
+ * instead of navigating. That trade is only acceptable if the modified clicks
+ * still do what the href promises — cmd-click, middle-click and shift-click
+ * must open the model page, or the link is lying about where it goes.
+ */
+export function opensElsewhere(event: React.MouseEvent): boolean {
+  return event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0
+}
 
 export function StarButton({
   pinned,
@@ -171,10 +185,17 @@ export function ModelCard({
         />
 
         <div className="min-w-0 flex-1 pt-2.5">
-          <button
-            type="button"
+          {/* A link, not a button. The model page is a real destination and
+              the list is the strongest page pointing at it, so the markup has
+              to carry an href with the model's name as its anchor text —
+              a button is invisible to a crawler. A plain click still opens the
+              card, which is what the list is for. */}
+          <Link
+            href={modelPath(row.provider, row.model_id)}
             onClick={(event) => {
               event.stopPropagation()
+              if (opensElsewhere(event)) return
+              event.preventDefault()
               onToggle(row.model_id)
             }}
             aria-expanded={expanded}
@@ -182,16 +203,22 @@ export function ModelCard({
             className="block text-left text-[15px] font-semibold leading-snug text-neutral-900 underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-emerald-600"
           >
             {row.display_name}
-          </button>
+          </Link>
 
           <div className="mt-1 flex flex-wrap items-center gap-x-1.5 text-[12.5px] text-neutral-600">
-            <span className="inline-flex items-center gap-1.5">
+            {/* The card body toggles the detail; the provider is a real link
+                out to its hub, so its click must not also expand the card. */}
+            <Link
+              href={providerPath(row.provider)}
+              onClick={(event) => event.stopPropagation()}
+              className="inline-flex items-center gap-1.5 underline-offset-2 hover:text-emerald-700 hover:underline"
+            >
               <span
                 className="inline-block h-2 w-2 shrink-0 rounded-full"
                 style={{ background: providerColor(row.provider) }}
               />
               {row.provider_name}
-            </span>
+            </Link>
             <span aria-hidden className="text-neutral-300">
               ·
             </span>
@@ -275,8 +302,15 @@ function CardPrice({ label, value, accent }: { label: string; value: string; acc
 /**
  * The expanded detail block, shared by the card and the table row.
  *
- * Kept in one place because it is the only view of cached pricing, long-context
- * pricing and the source link — a second copy would quietly diverge.
+ * A card rather than a run of loose facts: opening a row is the reader asking
+ * "what is this model", and the answer wants a shape of its own inside the
+ * row it belongs to. It carries a summary only — the specs a buyer scans
+ * before clicking. Everything we hold about the model is on its own page, and
+ * the link at the head of the card is how the reader gets there.
+ *
+ * Kept in one place because it is the only in-list view of cached pricing,
+ * long-context pricing and the source link — a second copy would quietly
+ * diverge.
  */
 export function ModelDetails({ row }: { row: ExplorerRow }) {
   const trend = row.trend
@@ -285,67 +319,100 @@ export function ModelDetails({ row }: { row: ExplorerRow }) {
       ? ((trend.series[trend.series.length - 1] - trend.series[0]) / trend.series[0]) * 100
       : 0
   const sparklineColor = pctChange < -0.5 ? '#059669' : pctChange > 0.5 ? '#DC2626' : '#A3A3A3'
+  const typeLabel = row.model_type ? (MODEL_TYPE_LABELS[row.model_type] ?? row.model_type) : null
 
   return (
-    <div className="text-[13px] text-neutral-600">
-      {/* Leads the block: what the model is answers a different question from
+    /* Clicks inside the card must not reach the row and collapse it: the whole
+       row is the expand toggle, so a link or a text selection in here would
+       otherwise shut the card the moment it was used. */
+    <div
+      className="rounded-xl border border-neutral-200 bg-white px-4 py-3.5 text-[13px] text-neutral-600 shadow-sm"
+      onClick={(event) => event.stopPropagation()}
+    >
+      <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
+        <div className="min-w-0">
+          <h3 className="m-0 text-[15px] font-semibold leading-snug text-neutral-900">
+            {row.display_name}
+          </h3>
+          <p className="m-0 mt-0.5 text-[12.5px] text-neutral-500">
+            <Link
+              href={providerPath(row.provider)}
+              className="inline-flex items-center gap-1.5 font-medium text-neutral-700 underline underline-offset-2 hover:text-emerald-700"
+            >
+              <span
+                className="inline-block h-2 w-2 shrink-0 rounded-full"
+                style={{ background: providerColor(row.provider) }}
+              />
+              {row.provider_name}
+            </Link>
+            {typeLabel ? ` · ${typeLabel}` : ''}
+          </p>
+        </div>
+
+        <Link
+          href={modelPath(row.provider, row.model_id)}
+          className="shrink-0 rounded-full border border-emerald-600 bg-emerald-50 px-3 py-1.5 text-[12.5px] font-semibold text-emerald-700 hover:bg-emerald-100 focus-visible:outline-2 focus-visible:outline-emerald-600"
+        >
+          {row.display_name} pricing →
+        </Link>
+      </div>
+
+      {/* Leads the body: what the model is answers a different question from
           what it costs, and the reader who opened a row usually wants both. */}
       {row.description && (
-        <p className="m-0 mb-2.5 max-w-3xl text-[13.5px] leading-relaxed text-neutral-700">
+        <p className="m-0 mt-2.5 max-w-3xl text-[13.5px] leading-relaxed text-neutral-700">
           {row.description}
         </p>
       )}
 
-      <div className="flex flex-wrap gap-x-8 gap-y-2">
-        <span>
-          <strong className="font-semibold text-neutral-800">Cached input:</strong>{' '}
-          <span className="tabular-nums">{formatPrice(row.cached_input)}</span>
-        </span>
-        <span>
-          <strong className="font-semibold text-neutral-800">Context:</strong>{' '}
-          {formatContext(row.context_window)}
-          {row.max_output_tokens ? ` · max output ${formatContext(row.max_output_tokens)}` : ''}
-        </span>
-        <span>
-          <strong className="font-semibold text-neutral-800">Source:</strong>{' '}
-          {row.source_url ? (
-            <a
-              href={row.source_url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-emerald-700 underline underline-offset-2"
-            >
-              {SOURCE_LABELS[row.source_kind] ?? row.source_kind}
-            </a>
-          ) : (
-            (SOURCE_LABELS[row.source_kind] ?? row.source_kind)
-          )}
-        </span>
-        <span>
-          <strong className="font-semibold text-neutral-800">API id:</strong>{' '}
-          <code className="rounded bg-neutral-200 px-1 py-0.5 font-mono text-xs">
-            {row.model_id}
-          </code>
-        </span>
-        <span>
-          <strong className="font-semibold text-neutral-800">Updated:</strong>{' '}
-          {formatRelativeTime(row.updated_at)}
-        </span>
-      </div>
+      <dl className="mt-3 grid grid-cols-2 gap-x-6 gap-y-2.5 border-t border-neutral-100 pt-3 sm:grid-cols-3">
+        <Spec
+          label="Cached input"
+          value={<span className="tabular-nums">{formatPrice(row.cached_input)}</span>}
+        />
+        <Spec label="Context" value={formatContext(row.context_window)} />
+        <Spec label="Max output" value={formatContext(row.max_output_tokens)} />
+        <Spec
+          label="API id"
+          value={
+            <code className="rounded bg-neutral-100 px-1 py-0.5 font-mono text-[11.5px]">
+              {row.model_id}
+            </code>
+          }
+        />
+        <Spec
+          label="Source"
+          value={
+            row.source_url ? (
+              <a
+                href={row.source_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-emerald-700 underline underline-offset-2"
+              >
+                {SOURCE_LABELS[row.source_kind] ?? row.source_kind}
+              </a>
+            ) : (
+              (SOURCE_LABELS[row.source_kind] ?? row.source_kind)
+            )
+          }
+        />
+        <Spec label="Updated" value={formatRelativeTime(row.updated_at)} />
+      </dl>
 
       {row.long_context_threshold !== null && row.long_input !== null && (
-        <p className="mt-2">
+        <p className="mt-3 rounded-lg bg-amber-50 px-2.5 py-1.5 text-[12.5px] text-amber-900">
           Over {formatContext(row.long_context_threshold)} tokens: input{' '}
           {formatPrice(row.long_input)}, output {formatPrice(row.long_output)} per 1M.
         </p>
       )}
 
       {row.tags.length > 0 && (
-        <div className="mt-2 flex flex-wrap gap-1.5">
+        <div className="mt-3 flex flex-wrap gap-1.5">
           {row.tags.map((tag) => (
             <span
               key={tag}
-              className="rounded-full bg-neutral-200 px-2 py-0.5 text-[11px] text-neutral-700"
+              className="rounded-full bg-neutral-100 px-2 py-0.5 text-[11px] text-neutral-700"
             >
               {tag}
             </span>
@@ -353,12 +420,22 @@ export function ModelDetails({ row }: { row: ExplorerRow }) {
         </div>
       )}
 
-      <div className="mt-2.5 flex items-center gap-2.5">
+      <div className="mt-3 flex items-center gap-2.5 border-t border-neutral-100 pt-2.5">
         {trend && trend.series.length >= 2 && (
           <Sparkline series={trend.series} color={sparklineColor} />
         )}
         <span>{describeTrend(trend, pctChange)}</span>
       </div>
+    </div>
+  )
+}
+
+/** One labelled fact in the card's spec grid. */
+function Spec({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <div className="min-w-0">
+      <dt className="text-[10.5px] uppercase tracking-wide text-neutral-400">{label}</dt>
+      <dd className="m-0 mt-0.5 truncate text-[13px] text-neutral-800">{value}</dd>
     </div>
   )
 }

@@ -1,3 +1,4 @@
+import { MODEL_TYPE_LABELS } from '../components/provider-colors.ts'
 import type { PriceRowV1 } from './types.ts'
 
 /**
@@ -182,6 +183,23 @@ export function modelSchema(row: PriceRowV1): Json {
       value: row.max_output_tokens,
       unitText: 'tokens',
     })
+  }
+
+  /*
+   * Structured data has to describe what the page actually shows. The model
+   * page renders these facts in its specifications table, so they belong in
+   * the graph too — a Product node that omits half the visible spec is a
+   * weaker result and a mismatch Google is entitled to distrust.
+   */
+  if (row.model_type !== null) {
+    properties.push({
+      '@type': 'PropertyValue',
+      name: 'Model type',
+      value: MODEL_TYPE_LABELS[row.model_type] ?? row.model_type,
+    })
+  }
+  for (const feature of row.capabilities?.features ?? []) {
+    properties.push({ '@type': 'PropertyValue', name: 'Feature', value: feature })
   }
 
   return {

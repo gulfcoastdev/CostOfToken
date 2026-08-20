@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
+import { MODEL_TYPE_LABELS, SOURCE_LABELS } from '@/components/provider-colors.ts'
 import { Breadcrumbs, JsonLd, PageShell, PriceStat } from '@/components/site-chrome.tsx'
 import { compareHref, modelKey } from '@/lib/compare.ts'
 import { formatContext, formatPrice } from '@/lib/format.ts'
@@ -20,19 +21,6 @@ import type { HistoryPointV1, PriceRowV1 } from '@/lib/types.ts'
 import { comparisonsForModel } from '../../../../../data/comparisons.ts'
 
 export const revalidate = 3600
-
-const MODEL_TYPE_LABELS: Record<string, string> = {
-  general: 'general-purpose',
-  embedding: 'embedding',
-  moderation: 'moderation',
-  tts: 'text-to-speech',
-  asr: 'speech-to-text',
-  image_gen: 'image generation',
-  video_gen: 'video generation',
-  ocr: 'OCR',
-  realtime: 'realtime audio',
-  other: 'specialised',
-}
 
 /** "an embedding model" rather than "a embedding model". */
 function article(label: string): string {
@@ -236,6 +224,106 @@ export default async function ModelPage({
         </section>
       )}
 
+      {/*
+        Everything we hold about the model, in one place.
+
+        The explorer's detail card is deliberately a summary — the specs a
+        buyer scans before clicking through. This is the other half of that
+        bargain: whatever the card leaves out has to be here, or the link out
+        of the card is a promise the page does not keep. Capabilities and tags
+        in particular were stored and served by the API but rendered nowhere.
+      */}
+      <section className="mb-8">
+        <h2 className="mb-3 text-xl font-semibold tracking-tight text-neutral-950">
+          {row.display_name} specifications
+        </h2>
+        <div className="rounded-xl border border-neutral-200 bg-white px-5 py-4">
+          <dl className="grid grid-cols-1 gap-x-8 gap-y-3 sm:grid-cols-2 lg:grid-cols-3">
+            <Spec label="Provider">
+              <Link
+                href={providerPath(row.provider)}
+                className="text-emerald-700 underline underline-offset-2"
+              >
+                {row.provider_name}
+              </Link>
+            </Spec>
+            <Spec label="API id">
+              <code className="rounded bg-neutral-100 px-1.5 py-0.5 font-mono text-xs">
+                {row.model_id}
+              </code>
+            </Spec>
+            <Spec label="Model type">
+              {row.model_type ? (MODEL_TYPE_LABELS[row.model_type] ?? row.model_type) : 'unknown'}
+            </Spec>
+            <Spec label="Context window">{formatContext(row.context_window)} tokens</Spec>
+            <Spec label="Max output">
+              {row.max_output_tokens !== null
+                ? `${formatContext(row.max_output_tokens)} tokens`
+                : 'not published'}
+            </Spec>
+            <Spec label="Currency">{row.currency}</Spec>
+            <Spec label="Price source">
+              {row.source_url ? (
+                <a
+                  href={row.source_url}
+                  target="_blank"
+                  rel="noopener noreferrer nofollow"
+                  className="text-emerald-700 underline underline-offset-2"
+                >
+                  {SOURCE_LABELS[row.source_kind] ?? row.source_kind}
+                </a>
+              ) : (
+                (SOURCE_LABELS[row.source_kind] ?? row.source_kind)
+              )}
+            </Spec>
+            <Spec label="Last checked">
+              {row.updated_at ? row.updated_at.slice(0, 10) : 'unknown'}
+            </Spec>
+            {/* Absent capabilities are not a negative claim — the provider
+                simply did not publish them — so an empty group is omitted
+                rather than rendered as "none". */}
+            {row.capabilities?.input?.length ? (
+              <Spec label="Accepts">{row.capabilities.input.join(', ')}</Spec>
+            ) : null}
+            {row.capabilities?.output?.length ? (
+              <Spec label="Returns">{row.capabilities.output.join(', ')}</Spec>
+            ) : null}
+          </dl>
+
+          {row.capabilities?.features?.length ? (
+            <div className="mt-4 border-t border-neutral-100 pt-3">
+              <h3 className="m-0 text-[11px] uppercase tracking-wide text-neutral-400">Features</h3>
+              <ul className="mt-1.5 flex flex-wrap gap-1.5 p-0">
+                {row.capabilities.features.map((feature) => (
+                  <li
+                    key={feature}
+                    className="list-none rounded-full bg-emerald-50 px-2.5 py-0.5 text-[12px] text-emerald-800"
+                  >
+                    {feature}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+
+          {row.tags.length > 0 && (
+            <div className="mt-4 border-t border-neutral-100 pt-3">
+              <h3 className="m-0 text-[11px] uppercase tracking-wide text-neutral-400">Tags</h3>
+              <ul className="mt-1.5 flex flex-wrap gap-1.5 p-0">
+                {row.tags.map((tag) => (
+                  <li
+                    key={tag}
+                    className="list-none rounded-full bg-neutral-100 px-2.5 py-0.5 text-[12px] text-neutral-700"
+                  >
+                    {tag}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      </section>
+
       <section className="mb-8">
         <h2 className="mb-3 text-xl font-semibold tracking-tight text-neutral-950">
           What {row.display_name} costs in practice
@@ -406,6 +494,16 @@ export default async function ModelPage({
         </section>
       )}
     </PageShell>
+  )
+}
+
+/** One labelled fact in the specifications grid. */
+function Spec({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="min-w-0">
+      <dt className="text-[11px] uppercase tracking-wide text-neutral-400">{label}</dt>
+      <dd className="m-0 mt-0.5 text-[14px] text-neutral-800">{children}</dd>
+    </div>
   )
 }
 
