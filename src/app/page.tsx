@@ -95,7 +95,9 @@ export default async function HomePage() {
 
     rows = page.rows.map((row) => ({ ...row, trend: trends.get(row.model_id) ?? null }))
     // Only offer providers that actually have models to show.
-    providers = providerRows.filter((p) => p.model_count > 0).map((p) => ({ slug: p.slug, name: p.name }))
+    providers = providerRows
+      .filter((p) => p.model_count > 0)
+      .map((p) => ({ slug: p.slug, name: p.name }))
     updatedAt = lastUpdated
   } catch (cause) {
     error = cause instanceof Error ? cause.message : String(cause)
@@ -149,9 +151,20 @@ export default async function HomePage() {
 function ProviderLinks({ providers }: { providers: Array<{ slug: string; name: string }> }) {
   return (
     <section className="mb-10">
-      <h2 className="mb-3 text-xl font-semibold tracking-tight text-neutral-950">
-        Pricing by provider
-      </h2>
+      <div className="mb-3 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+        <h2 className="m-0 text-xl font-semibold tracking-tight text-neutral-950">
+          Pricing by provider
+        </h2>
+        {/* The table's "Show all" is a client-side toggle with no URL, so this
+            is the only link on the page that reaches the whole catalogue —
+            for a reader who wants to browse and for a crawler alike. */}
+        <Link
+          href="/models"
+          className="text-[14px] font-medium text-emerald-700 underline underline-offset-2 hover:text-emerald-800"
+        >
+          Browse every model we track →
+        </Link>
+      </div>
       <ul className="grid grid-cols-2 gap-2 p-0 sm:grid-cols-3 lg:grid-cols-5">
         {providers.map((provider) => {
           const brand = getBrand(provider.slug)
@@ -163,7 +176,9 @@ function ProviderLinks({ providers }: { providers: Array<{ slug: string; name: s
               >
                 {brand?.brand ?? provider.name} pricing
                 {brand && brand.brand !== brand.company && (
-                  <span className="block text-xs font-normal text-neutral-500">{brand.company}</span>
+                  <span className="block text-xs font-normal text-neutral-500">
+                    {brand.company}
+                  </span>
                 )}
               </Link>
             </li>
@@ -182,9 +197,14 @@ function HomeFaq() {
       </h2>
       <dl className="space-y-3">
         {HOME_FAQS.map((faq) => (
-          <div key={faq.question} className="rounded-xl border border-neutral-200 bg-white px-5 py-4">
+          <div
+            key={faq.question}
+            className="rounded-xl border border-neutral-200 bg-white px-5 py-4"
+          >
             <dt className="font-semibold text-neutral-900">{faq.question}</dt>
-            <dd className="m-0 mt-1.5 text-[15px] leading-relaxed text-neutral-700">{faq.answer}</dd>
+            <dd className="m-0 mt-1.5 text-[15px] leading-relaxed text-neutral-700">
+              {faq.answer}
+            </dd>
           </div>
         ))}
       </dl>
@@ -197,9 +217,7 @@ function SetupNotice({ error }: { error: string | null }) {
     <main className="mx-auto max-w-3xl px-5 py-16">
       <h1 className="text-2xl font-bold tracking-tight text-neutral-950">CostOfToken</h1>
       <div className="mt-6 rounded-xl border border-amber-300 bg-amber-50 p-5 text-sm text-amber-900">
-        <p className="font-semibold">
-          {error ? 'Could not load prices.' : 'No pricing data yet.'}
-        </p>
+        <p className="font-semibold">{error ? 'Could not load prices.' : 'No pricing data yet.'}</p>
         {error && <p className="mt-2 font-mono text-xs text-amber-800">{error}</p>}
         <ol className="mt-3 list-decimal space-y-1 pl-5">
           <li>

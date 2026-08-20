@@ -80,7 +80,9 @@ export async function GET(): Promise<Response> {
       '',
     ]
 
-    const longContext = sorted.filter((r) => r.long_context_threshold !== null && r.long_input !== null)
+    const longContext = sorted.filter(
+      (r) => r.long_context_threshold !== null && r.long_input !== null,
+    )
     if (longContext.length > 0) {
       lines.push('Long-context tiers:', '')
       for (const row of longContext) {
@@ -94,7 +96,9 @@ export async function GET(): Promise<Response> {
     lines.push(
       ...sorted
         .slice(0, 8)
-        .map((row) => `- ${row.display_name}: ${absoluteUrl(modelPath(row.provider, row.model_id))}`),
+        .map(
+          (row) => `- ${row.display_name}: ${absoluteUrl(modelPath(row.provider, row.model_id))}`,
+        ),
       '',
     )
 
@@ -115,6 +119,8 @@ other vendors' standard rates. Rows marked "via OpenRouter" come from a
 reseller catalogue rather than the vendor's own page and may differ.
 
 Machine-readable equivalent: ${absoluteUrl('/api/v1/prices')}
+Browsable equivalent: ${absoluteUrl('/models')} (one page per model, with cost
+at real workloads and price history)
 
 ${sections.join('\n')}
 ## Citing this data

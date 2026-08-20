@@ -11,6 +11,7 @@ import { usePathname } from 'next/navigation'
  */
 const LINKS: Array<{ href: string; label: string; accent?: boolean }> = [
   { href: '/', label: 'Home' },
+  { href: '/models', label: 'Models' },
   { href: '/providers', label: 'Providers' },
   { href: '/compare', label: 'Compare' },
   { href: '/calculator', label: 'Calculator', accent: true },
