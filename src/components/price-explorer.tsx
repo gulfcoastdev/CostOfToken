@@ -54,6 +54,22 @@ export interface ExplorerProps {
   providerSlugs: string[]
 }
 
+/**
+ * The blended price trend card is hidden.
+ *
+ * Its computation is sound — median over a fixed basket, no back-filled
+ * assumptions, a floored chart scale — but the *product* is overbuilt. It
+ * refuses to say anything until it has a full window of models priced at every
+ * sample point, which with a young price record means it usually says nothing.
+ *
+ * A price chart does not need that. Two observations are a line. The rebuild is
+ * in BACKLOG.md under "Redraw the price trend from whatever points exist";
+ * until then the card is off rather than shipping a statistic that hides.
+ *
+ * Everything behind it stays wired and tested, so re-enabling is this one flag.
+ */
+const SHOW_TREND_CARD = false
+
 /** localStorage key for the user's pinned models. Versioned so the shape can change. */
 const PINS_STORAGE_KEY = 'costoftoken.pins.v1'
 /** Remembers an explicit Cards/Table choice, so power users keep the dense view. */
@@ -687,7 +703,7 @@ export function PriceExplorer({ rows, providers, updatedAt, providerSlugs }: Exp
 
       <div className="mb-4 flex flex-wrap gap-3.5">
         <StatsCard stats={stats} count={matched.length} />
-        <TrendCard result={trendResult} days={trendWindowDays} />
+        {SHOW_TREND_CARD && <TrendCard result={trendResult} days={trendWindowDays} />}
       </div>
 
       <FunStatsCard avgInput={stats.avgInput} />
