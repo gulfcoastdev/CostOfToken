@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { formatContext, formatPrice, formatRelativeTime, isFlat } from '@/lib/format.ts'
+import { formatContext, formatPrice, formatRelativeTime, formatWindow, isFlat } from '@/lib/format.ts'
 import { modelPath, providerPath } from '@/lib/seo.ts'
 import type { ExplorerRow } from './price-explorer.tsx'
 import { MODEL_TYPE_LABELS, providerColor, SOURCE_LABELS } from './provider-colors.ts'
@@ -458,9 +458,9 @@ export function describeTrend(trend: ExplorerRow['trend'], pctChange: number): s
 
   if (isFlat(pctChange)) {
     const times = trend.changeCount === 1 ? 'once' : `${trend.changeCount} times`
-    return `Changed ${times} but net unchanged over 90 days · last changed ${lastChanged}.`
+    return `Changed ${times} but net unchanged over ${formatWindow(trend.windowDays)} · last changed ${lastChanged}.`
   }
 
   const direction = pctChange < 0 ? 'down' : 'up'
-  return `Input price ${direction} ${Math.abs(Math.round(pctChange))}% over 90 days · last changed ${lastChanged}.`
+  return `Input price ${direction} ${Math.abs(Math.round(pctChange))}% over ${formatWindow(trend.windowDays)} · last changed ${lastChanged}.`
 }

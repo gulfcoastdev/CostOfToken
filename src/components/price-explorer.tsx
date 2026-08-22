@@ -9,6 +9,7 @@ import {
   formatCost,
   formatPrice,
   formatRelativeTime,
+  formatWindow,
   isFlat,
 } from '@/lib/format.ts'
 import { computeTrend, type TrendResult } from '@/lib/trend.ts'
@@ -33,6 +34,8 @@ export interface ExplorerRow extends PriceRowV1 {
     series: number[]
     /** Leading samples that predate the first recording — assumption, not data. */
     backfilled: number
+    /** Days the series actually spans, which may be less than the window asked for. */
+    windowDays: number
     lastChangedAt: string | null
     changeCount: number
   } | null
@@ -523,6 +526,12 @@ export function PriceExplorer({ rows, providers, updatedAt, providerSlugs }: Exp
   // Median, not mean: this card once reported prices rising 0.14% while the
   // median was unchanged and movers split 10 down against 8 up. See
   // src/lib/trend.ts for the rest of that story.
+  // The window the data actually supports, not the one we asked for.
+  const trendWindowDays = useMemo(
+    () => matched.find((r) => r.trend)?.trend?.windowDays ?? 90,
+    [matched],
+  )
+
   const trendResult = useMemo(
     () =>
       computeTrend(
@@ -678,7 +687,7 @@ export function PriceExplorer({ rows, providers, updatedAt, providerSlugs }: Exp
 
       <div className="mb-4 flex flex-wrap gap-3.5">
         <StatsCard stats={stats} count={matched.length} />
-        <TrendCard result={trendResult} />
+        <TrendCard result={trendResult} days={trendWindowDays} />
       </div>
 
       <FunStatsCard avgInput={stats.avgInput} />
@@ -1355,7 +1364,7 @@ function Stat({ label, value, accent }: { label: string; value: string; accent?:
   )
 }
 
-function TrendCard({ result }: { result: TrendResult }) {
+function TrendCard({ result, days }: { result: TrendResult; days: number }) {
   const pct = result.kind === 'series' ? result.pct : 0
   const flat = isFlat(pct)
   const badge = flat
@@ -1368,7 +1377,7 @@ function TrendCard({ result }: { result: TrendResult }) {
     <section className="min-w-[280px] flex-1 rounded-2xl border border-neutral-200 bg-white px-6 py-5">
       <div className="flex flex-wrap items-baseline justify-between gap-2.5">
         <h2 className="m-0 text-xs font-semibold uppercase tracking-wide text-neutral-500">
-          Blended price trend · 90 days
+          Blended price trend · {formatWindow(days)}
         </h2>
         {result.kind === 'series' && (
           <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${badge}`}>

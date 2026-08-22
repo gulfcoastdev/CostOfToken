@@ -130,3 +130,62 @@ function median(values: number[]): number {
   const middle = Math.floor(sorted.length / 2)
   return sorted.length % 2 === 0 ? (sorted[middle - 1] + sorted[middle]) / 2 : sorted[middle]
 }
+
+/**
+ * Where the trend window actually starts.
+ *
+ * Asking for 90 days when the record begins 11 days ago put five of six sample
+ * points before the first observation. Every model was back-filled, every model
+ * was therefore excluded from the basket, and the card had nothing to say —
+ * technically honest and practically useless.
+ *
+ * So the window is fitted to the history that exists: sample from the first
+ * thing we ever recorded, or from the requested window, whichever is later. A
+ * short real window beats a long imaginary one, and the card labels itself with
+ * the span it actually covers so the reader is not told "90 days" about eleven.
+ */
+export function windowStart({
+  now,
+  days,
+  earliest,
+}: {
+  now: number
+  days: number
+  earliest: number | null
+}): number {
+  const requested = now - days * 24 * 60 * 60 * 1000
+  return earliest === null ? requested : Math.max(requested, earliest)
+}
+
+/** Evenly spaced sample times across the fitted window, oldest first. */
+export function sampleWindow({
+  now,
+  days,
+  points,
+  earliest,
+}: {
+  now: number
+  days: number
+  points: number
+  earliest: number | null
+}): number[] {
+  const start = windowStart({ now, days, earliest })
+  const span = now - start
+  return Array.from({ length: points }, (_, i) =>
+    points === 1 ? now : start + (span * i) / (points - 1),
+  )
+}
+
+/** The span the trend actually covers, in whole days, for labelling the card. */
+export function windowDays({
+  now,
+  days,
+  earliest,
+}: {
+  now: number
+  days: number
+  earliest: number | null
+}): number {
+  const span = now - windowStart({ now, days, earliest })
+  return Math.max(1, Math.round(span / (24 * 60 * 60 * 1000)))
+}

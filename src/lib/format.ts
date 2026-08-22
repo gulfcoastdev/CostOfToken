@@ -83,3 +83,16 @@ export function blendedPrice(
   if (output === null || output === undefined) return null
   return (input + output) / 2
 }
+
+/**
+ * A trend window, in the units a reader thinks in.
+ *
+ * The card once said "90 days" over a record eleven days old. It now names the
+ * span it actually covers, so the label cannot overstate the evidence.
+ */
+export function formatWindow(days: number): string {
+  if (days >= 365) return `${Math.round(days / 365)} year${days >= 730 ? 's' : ''}`
+  if (days >= 60) return `${Math.round(days / 30)} months`
+  if (days >= 14) return `${Math.round(days / 7)} weeks`
+  return `${days} day${days === 1 ? '' : 's'}`
+}
