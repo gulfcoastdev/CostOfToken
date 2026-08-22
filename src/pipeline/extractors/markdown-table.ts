@@ -80,23 +80,13 @@ export function parseMarkdownTables(markdown: string): SourceTable[] {
   return tables
 }
 
-/**
- * A tab label is a short noun phrase — "Standard", "Fast mode", "Prices per 1M
- * tokens." A sentence is prose and means nothing about the table.
- *
- * The distinction matters because the same data-residency paragraph repeats
- * above several tables in OpenAI's document; without a length bound it would
- * become tier evidence for all of them.
- */
-const MAX_LABEL_LENGTH = 48
+/** Bare text lines kept per table. The tab label is always among the nearest few. */
 const MAX_LABELS = 6
 
 function asLabel(line: string): string | null {
   const text = cleanCell(line)
   if (!text) return null
-  // Blockquotes and list items are body copy, never tab labels.
   if (/^[>*+-]\s/.test(line.trimStart())) return null
-  if (text.length > MAX_LABEL_LENGTH) return null
   return text
 }
 
