@@ -1,5 +1,6 @@
 import { timingSafeEqual } from 'node:crypto'
 import { revalidatePath, revalidateTag } from 'next/cache'
+import { buildAlert, sendAlert, shouldAlert } from '@/lib/alert.ts'
 import { NextResponse } from 'next/server'
 import { env } from '@/lib/env.ts'
 import { pruneRateLimitWindows } from '@/lib/rate-limit.ts'
@@ -75,6 +76,19 @@ async function handle(request: Request): Promise<NextResponse> {
           // Never fail a good run because cache invalidation misbehaved.
           console.error('revalidate after price update failed', error)
         }
+      }
+    }
+
+    // Tell a human. Best-effort for the same reason as the housekeeping
+    // above: a notifier that can fail a good run is worse than no notifier.
+    // Only from here, never from runPipeline — the CLI shares that code and
+    // must stay silent.
+    if (!summary.dryRun && shouldAlert(summary)) {
+      try {
+        const result = await sendAlert(buildAlert(summary))
+        if (!result.sent) console.warn('price alert not sent:', result.reason)
+      } catch (error) {
+        console.error('price alert failed', error)
       }
     }
 

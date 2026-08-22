@@ -27,6 +27,7 @@ export type AnomalyCode =
   | 'coverage_drop'
   | 'uniform_price_shift'
   | 'tier_shaped_shift'
+  | 'unsettled_price'
   | 'mass_price_change'
   | 'field_collapse'
 
@@ -45,6 +46,15 @@ export interface BaselineModel {
   inputPrice: number | null
   cachedInputPrice: number | null
   outputPrice: number | null
+  /**
+   * When this model's price last actually moved, or null if it has never
+   * moved since being catalogued.
+   *
+   * Passed in as data rather than queried here, so this module stays pure and
+   * testable without a database — which is the only reason its logic has any
+   * coverage at all.
+   */
+  lastChangedAt?: string | null
 }
 
 export interface AnomalyOptions {
@@ -83,6 +93,7 @@ export function detectAnomalies(
 
   anomalies.push(...checkPriceShift(overlap))
   anomalies.push(...checkTierShapedShift(overlap))
+  anomalies.push(...checkUnsettledPrices(overlap))
   anomalies.push(...checkFieldCollapse(overlap))
 
   return anomalies
@@ -158,6 +169,86 @@ function checkTierShapedShift(
         ratios: [...new Set(suspicious)].sort((a, b) => a - b),
         mixedDirections: directions.size > 1,
       },
+    },
+  ]
+}
+
+/**
+ * How recently a price must have moved for moving again to be worth reporting.
+ *
+ * Measured over 14 days of production history: 23 changes landed inside this
+ * window, and two legitimate ones landed at *exactly* 24 hours — which is what
+ * a daily cron produces for a steadily-repricing model. The comparison is
+ * therefore strictly less than, or every such model would be reported daily.
+ */
+const UNSETTLED_WINDOW_HOURS = 24
+
+/**
+ * Report prices that will not settle.
+ *
+ * Both faults that reached readers this fortnight had this shape: a price
+ * recorded, then re-recorded differently a few hours later. One was 73 of 74
+ * models flapping between pricing tiers inside half an hour; the other was a
+ * single model going 0.440 -> 0.220 nine hours after being catalogued.
+ *
+ * This **warns and does not block**. An earlier draft blocked, and a share
+ * threshold was derived to avoid refusing the reseller-backed providers, whose
+ * churn is 3-5x first-party. The operator overruled it, correctly: price
+ * changes are ordinary, and a system that guesses which are wrong will either
+ * refuse real ones or miss the single-model case entirely — the second fault
+ * was 7% of its provider, far below any threshold that provider's normal
+ * behaviour permits. Reporting every one and letting a human judge is both
+ * simpler and strictly more sensitive.
+ *
+ * Expected volume, from the same measurement: about 23 per fortnight, almost
+ * all from one provider.
+ */
+function checkUnsettledPrices(
+  overlap: Array<{ model: NormalizedModel; before: BaselineModel }>,
+): Anomaly[] {
+  const now = Date.now()
+  const models: Array<Record<string, unknown>> = []
+
+  for (const { model, before } of overlap) {
+    if (!before.lastChangedAt) continue // never moved: a first change is not suspicious
+    const after = model.pricing.inputPrice
+    if (before.inputPrice === null || after === null) continue
+    if (after === before.inputPrice) continue
+
+    const changedAt = Date.parse(before.lastChangedAt)
+    if (!Number.isFinite(changedAt)) continue
+    const hours = (now - changedAt) / 3_600_000
+    if (!(hours < UNSETTLED_WINDOW_HOURS)) continue
+
+    // 4dp keeps 0.5x/2x exact while tolerating float noise.
+    const ratio =
+      before.inputPrice > 0 ? Number((after / before.inputPrice).toFixed(4)) : null
+
+    models.push({
+      modelId: model.modelId,
+      before: before.inputPrice,
+      after,
+      hours: Math.round(hours),
+      ratio,
+      // An exact commercial multiple is the fingerprint of a tier or parser
+      // fault rather than a repricing. Of 23 real rapid re-changes, exactly
+      // one was exact — and that one was the fault.
+      exactMultiple: ratio !== null && TIER_RATIOS.has(ratio),
+    })
+  }
+
+  if (models.length === 0) return []
+
+  const exact = models.filter((m) => m.exactMultiple).length
+  return [
+    {
+      code: 'unsettled_price',
+      severity: 'warn',
+      message:
+        `${models.length} price${models.length === 1 ? '' : 's'} moved again within ` +
+        `${UNSETTLED_WINDOW_HOURS}h of the previous change` +
+        (exact > 0 ? `, ${exact} by an exact multiple — check the parser` : ''),
+      details: { count: models.length, exactMultiples: exact, models },
     },
   ]
 }

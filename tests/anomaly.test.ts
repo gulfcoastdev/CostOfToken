@@ -198,3 +198,78 @@ test('the existing uniform-shift check still fires and still blocks', () => {
   const found = detectAnomalies(baseline(10), incoming(10, 2))
   assert.ok(found.some((a) => a.code === 'uniform_price_shift' && a.severity === 'block'))
 })
+
+// ---------------------------------------------------------------------------
+// 008-price-fault-alerts: a price that will not settle.
+//
+// Measured over 14 days of production history: 23 price changes landed within
+// 24 hours of that model's previous change. Genuine churn is untidy — ratios
+// like 0.9975, 0.8625, 1.3034, mostly from a reseller quoting per-token
+// decimals. Exactly one of the 23 landed on a clean commercial multiple, and
+// that one was the fault: 0.440 -> 0.220 after nine hours.
+//
+// This flags, it does not block. Price changes are ordinary and the operator
+// decides which are wrong: "model changes happen. Just monitor them and let
+// me know."
+// ---------------------------------------------------------------------------
+
+function baselineAt(count: number, input: number, hoursAgo: number | null): BaselineModel[] {
+  const at = hoursAgo === null ? null : new Date(Date.now() - hoursAgo * 3_600_000).toISOString()
+  return Array.from({ length: count }, (_, i) => ({
+    modelId: `model-${i}`,
+    inputPrice: input,
+    cachedInputPrice: input / 10,
+    outputPrice: input * 4,
+    lastChangedAt: at,
+  }))
+}
+
+test('a price that moved again within the window is flagged, not blocked', () => {
+  const found = detectAnomalies(baselineAt(10, 1, 9), incoming(10, 0.5))
+  const flag = found.find((a) => a.code === 'unsettled_price')
+
+  assert.ok(flag, 'a re-change inside the window must be flagged')
+  assert.equal(flag.severity, 'warn', 'flagging must never block a write')
+  assert.equal(hasBlocking(found.filter((a) => a.code === 'unsettled_price')), false)
+})
+
+test('the second incident is caught: one model, exact half, nine hours later', () => {
+  const before = baselineAt(15, 0.44, 9)
+  const after = incoming(15, 0.44).map((m, i) =>
+    i === 0 ? { ...m, pricing: { ...m.pricing, inputPrice: 0.22 } } : m,
+  )
+
+  const flag = detectAnomalies(before, after).find((a) => a.code === 'unsettled_price')
+  assert.ok(flag, 'a single model re-pricing inside the window must still be reported')
+
+  const models = (flag.details as { models: Array<{ modelId: string; ratio: number }> }).models
+  assert.equal(models.length, 1)
+  assert.equal(models[0].ratio, 0.5, 'the exact multiple is what marks it as a likely parser fault')
+})
+
+test('a first-ever change is not flagged', () => {
+  // No recorded prior change means nothing to be suspicious about.
+  const found = detectAnomalies(baselineAt(10, 1, null), incoming(10, 0.5))
+  assert.ok(!found.some((a) => a.code === 'unsettled_price'))
+})
+
+test('a change outside the window is not flagged', () => {
+  // Two legitimate changes were measured at exactly 24h apart, which is what a
+  // daily cron produces. The boundary must be exclusive or every steady daily
+  // repricing would be reported.
+  const found = detectAnomalies(baselineAt(10, 1, 24), incoming(10, 0.5))
+  assert.ok(!found.some((a) => a.code === 'unsettled_price'))
+})
+
+test('an unchanged price inside the window is not flagged', () => {
+  const found = detectAnomalies(baselineAt(10, 1, 2), incoming(10, 1))
+  assert.ok(!found.some((a) => a.code === 'unsettled_price'))
+})
+
+test('flagging does not disturb the existing blocking checks', () => {
+  // Regression guard: a uniform 2x shift must still block, and must still be
+  // reported under its own code rather than absorbed into the new one.
+  const found = detectAnomalies(baselineAt(10, 1, 2), incoming(10, 2))
+  assert.ok(found.some((a) => a.code === 'uniform_price_shift' && a.severity === 'block'))
+  assert.ok(hasBlocking(found))
+})

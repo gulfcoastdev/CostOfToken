@@ -307,6 +307,23 @@ worth doing when the surface it protects starts changing often.
       and the `backfilled` field in `src/lib/queries.ts`. `tests/trend.test.ts`
       encodes the current behaviour and will need amending with it.
 
+- [ ] **A manual pipeline run neither notifies nor refreshes the site**
+      `npm run pipeline:run` calls `runPipeline` directly, bypassing
+      `/api/cron/update-prices`. That route is where `revalidateTag`/
+      `revalidatePath` live, and now where price alerts are sent from, so a
+      CLI run does neither.
+
+      This is not theoretical: on 2026-08-22 a manual run corrected production
+      prices and the published site served the old numbers for 30 minutes,
+      until the caches expired on their own. The RSS feed served stale items
+      for the same reason.
+
+      Keeping the notifier at the route boundary is deliberate — the CLI must
+      not email on every local run — so the fix is not "move it into
+      runPipeline". Options: a `--notify` flag, or having the CLI hit the cron
+      route with `CRON_SECRET` instead of calling the pipeline directly. The
+      second is probably right: one path, one set of side effects.
+
 - [ ] **Alert when the daily pipeline stops running**
       Nothing currently notices if the cron stops firing. The site's entire
       claim is up-to-date pricing, so silent staleness is the failure that
