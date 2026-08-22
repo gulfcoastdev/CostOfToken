@@ -38,11 +38,17 @@ export async function ensureProviders(): Promise<Map<string, string>> {
  * detection. Read before the upsert, since the upsert destroys it.
  */
 export async function getProviderBaseline(providerId: string): Promise<BaselineModel[]> {
+  // `lastChangedAt` feeds the unsettled-price check: a price moving again
+  // hours after it last moved is the shape both of this fortnight's faults
+  // took. Covered by price_history_model_time_idx (model_id, recorded_at).
   return await sql<BaselineModel[]>`
     select m.model_id      as "modelId",
            pr.input_price        as "inputPrice",
            pr.cached_input_price as "cachedInputPrice",
-           pr.output_price       as "outputPrice"
+           pr.output_price       as "outputPrice",
+           (select max(h.recorded_at)
+              from price_history h
+             where h.model_id = m.id) as "lastChangedAt"
       from models m
       join prices pr on pr.model_id = m.id
      where m.provider_id = ${providerId}
