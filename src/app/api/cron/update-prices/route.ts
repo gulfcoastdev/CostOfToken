@@ -1,6 +1,7 @@
 import { timingSafeEqual } from 'node:crypto'
 import { revalidatePath, revalidateTag } from 'next/cache'
 import { buildAlert, sendAlert, shouldAlert } from '@/lib/alert.ts'
+import type { RunSummary } from '@/pipeline/run.ts'
 import { NextResponse } from 'next/server'
 import { env } from '@/lib/env.ts'
 import { pruneRateLimitWindows } from '@/lib/rate-limit.ts'
@@ -30,6 +31,60 @@ export const maxDuration = 60
  * scrape ran but produced something we have concrete reason to distrust, so
  * the previous prices were kept.
  */
+/**
+ * A stand-in run summary for `?test_alert=true`.
+ *
+ * Deliberately shaped like a real finding rather than "hello world", so the
+ * test also shows what a genuine alert will look like in the inbox.
+ */
+function sampleSummary(): RunSummary {
+  return {
+    runId: 'test-alert',
+    startedAt: new Date().toISOString(),
+    finishedAt: new Date().toISOString(),
+    durationMs: 0,
+    dryRun: true,
+    totalModels: 0,
+    totalChanged: 0,
+    ok: true,
+    blocked: 0,
+    providers: [
+      {
+        provider: 'test',
+        status: 'ok',
+        sourceKind: 'test',
+        modelsFound: 0,
+        modelsRejected: 0,
+        modelsChanged: 0,
+        durationMs: 0,
+        anomalies: [
+          {
+            code: 'unsettled_price',
+            severity: 'warn',
+            message:
+              'This is a test alert. No pipeline ran and nothing was written. ' +
+              'A real one looks like this.',
+            details: {
+              count: 1,
+              exactMultiples: 1,
+              models: [
+                {
+                  modelId: 'example-model',
+                  before: 0.44,
+                  after: 0.22,
+                  hours: 9,
+                  ratio: 0.5,
+                  exactMultiple: true,
+                },
+              ],
+            },
+          },
+        ],
+      },
+    ],
+  }
+}
+
 async function handle(request: Request): Promise<NextResponse> {
   if (!isAuthorized(request)) {
     return NextResponse.json(
@@ -39,6 +94,18 @@ async function handle(request: Request): Promise<NextResponse> {
   }
 
   const params = new URL(request.url).searchParams
+
+  // `?test_alert=true` proves the notification path end to end without running
+  // the pipeline or writing anything. Configuring email means setting secrets
+  // in a dashboard, and the only way to find out whether that worked used to
+  // be waiting for a real fault. Authenticated like everything else here.
+  if (params.get('test_alert') === 'true') {
+    const result = await sendAlert(buildAlert(sampleSummary()))
+    return NextResponse.json(
+      { test: true, ...result },
+      { status: result.sent ? 200 : 503, headers: { 'cache-control': 'no-store' } },
+    )
+  }
   const only = params
     .getAll('provider')
     .flatMap((v) => v.split(','))
