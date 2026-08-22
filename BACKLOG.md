@@ -270,20 +270,42 @@ worth doing when the surface it protects starts changing often.
       back-filled, so the blended trend is not reading them today, but the
       per-model sparklines and `changeCount` are.
 
-- [ ] **Show a trend over the window we actually have**
-      The blended trend card asks for 90 days, requires a price at every sample
-      point, and so currently reports "not enough price history yet" — correct,
-      but less useful than it could be. Stored history began 2026-08-11.
+- [ ] **Redraw the price trend from whatever points exist** — *card is hidden
+      until this is done* (`SHOW_TREND_CARD` in `src/components/price-explorer.tsx`).
 
-      Fit the window to the data instead: report the longest window over which
-      a large enough basket has a real observation at every point, and label the
-      card with that window rather than a fixed "90 days". The insufficiency
-      state stays for the case where even the shortest useful window is empty.
+      The current implementation is overbuilt. It asks for a 90-day window, then
+      requires a large enough basket of models each holding a real observation at
+      *every* sample point, and reports "not enough price history" whenever that
+      fails — which, with a price record that began 2026-08-11, is most of the
+      time. A statistic that usually declines to answer is not a feature.
 
-      *Do not solve this by reinstating back-fill.* Padding a model's series
-      with its earliest known price is an assumption, and averaging assumptions
-      into a market statistic is how the card came to report a 0.14% rise while
-      the median was flat.
+      Two observations are a line. Draw the line between the points that exist,
+      label it with the span it covers, and stop there. No minimum basket, no
+      fixed-membership requirement, no insufficiency state beyond "we have fewer
+      than two points".
+
+      *Keep three things from the current version*, each of which is there for a
+      reason and cost real debugging to find:
+
+      - **Median, not mean.** The card once reported prices rising 0.14% while
+        the median was unchanged and movers split 10 down against 8 up. The
+        distribution is strongly right-skewed — median 0.68 against mean 3.96 —
+        so a mean never described the typical model.
+      - **Token-priced types only.** An image-generation model, priced per image,
+        was once the largest single contributor to a *token* price trend.
+      - **The floored chart scale** in `src/lib/chart-scale.ts`. Without it a
+        0.14% movement is drawn as a full-height climb, contradicting the card's
+        own badge and its own endpoint labels.
+
+      *Do not reintroduce back-fill.* Padding a model's series with its earliest
+      known price is an assumption, and averaging assumptions into a market
+      statistic is how the original wrong number was produced. Drawing fewer,
+      real points is the fix; inventing points to fill a window is not.
+
+      The machinery to delete or simplify lives in `src/lib/trend.ts`
+      (`TREND_MIN_BASKET`, the fixed-basket filter, the `insufficient` result)
+      and the `backfilled` field in `src/lib/queries.ts`. `tests/trend.test.ts`
+      encodes the current behaviour and will need amending with it.
 
 - [ ] **Alert when the daily pipeline stops running**
       Nothing currently notices if the cron stops firing. The site's entire
