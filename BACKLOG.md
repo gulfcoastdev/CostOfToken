@@ -250,6 +250,41 @@ worth doing when the surface it protects starts changing often.
 
 ## Operational hardening
 
+- [ ] **Restate the price history corrupted between 2026-08-11 and 2026-08-15**
+      Left deliberately undone by `006-truthful-price-trend`, which fixed the
+      cause but not the record. During that window the OpenAI extractor read
+      whichever pricing tier's table happened to come first, so 73 of 74 models
+      recorded two or three different prices — batch, fast-mode and fine-tuning
+      rates stored as standard per-token prices. Those rows are still in
+      `price_history` and still feed anything that reads the past.
+
+      *Why it was not done with the fix.* Deleting published history is not
+      obviously right: the rows are a true record of what we recorded, just not
+      of what OpenAI charged. Restating them means choosing a correct value for
+      a date we never observed correctly, which is inventing data — the thing
+      Principle I forbids. Deleting them loses the audit trail of the incident.
+      Someone has to decide which is worse; the code cannot.
+
+      *Scope when picked up.* Affects `price_history` rows for provider
+      `openai` between those dates. The trend basket already excludes anything
+      back-filled, so the blended trend is not reading them today, but the
+      per-model sparklines and `changeCount` are.
+
+- [ ] **Show a trend over the window we actually have**
+      The blended trend card asks for 90 days, requires a price at every sample
+      point, and so currently reports "not enough price history yet" — correct,
+      but less useful than it could be. Stored history began 2026-08-11.
+
+      Fit the window to the data instead: report the longest window over which
+      a large enough basket has a real observation at every point, and label the
+      card with that window rather than a fixed "90 days". The insufficiency
+      state stays for the case where even the shortest useful window is empty.
+
+      *Do not solve this by reinstating back-fill.* Padding a model's series
+      with its earliest known price is an assumption, and averaging assumptions
+      into a market statistic is how the card came to report a 0.14% rise while
+      the median was flat.
+
 - [ ] **Alert when the daily pipeline stops running**
       Nothing currently notices if the cron stops firing. The site's entire
       claim is up-to-date pricing, so silent staleness is the failure that

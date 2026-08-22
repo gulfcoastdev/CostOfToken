@@ -9,7 +9,10 @@ import {
   formatCost,
   formatPrice,
   formatRelativeTime,
+  formatWindow,
+  isFlat,
 } from '@/lib/format.ts'
+import { computeTrend, type TrendResult } from '@/lib/trend.ts'
 import { compareHref, MAX_COMPARED, modelKey } from '@/lib/compare.ts'
 import { modelPath, providerPath } from '@/lib/seo.ts'
 import { resolveTypeFilter, type PriceRowV1 } from '@/lib/types.ts'
@@ -29,6 +32,10 @@ import { TrendChart } from './sparkline.tsx'
 export interface ExplorerRow extends PriceRowV1 {
   trend: {
     series: number[]
+    /** Leading samples that predate the first recording — assumption, not data. */
+    backfilled: number
+    /** Days the series actually spans, which may be less than the window asked for. */
+    windowDays: number
     lastChangedAt: string | null
     changeCount: number
   } | null
@@ -510,25 +517,35 @@ export function PriceExplorer({ rows, providers, updatedAt, providerSlugs }: Exp
     }
   }, [matched])
 
-  // Page-level trend: the mean input price at each historical sample point.
+  // Page-level trend: the median input price at each historical sample point,
+  // over a basket held constant across every point.
+  //
   // Over `matched` for the same reason as the averages above — the trend is a
   // statement about prices, not about which rows the page opened on.
-  const trendSeries = useMemo(() => {
-    const withTrend = matched.filter((r) => r.trend && r.trend.series.length > 0)
-    if (withTrend.length === 0) return []
-    const points = withTrend[0].trend?.series.length ?? 0
-    return Array.from({ length: points }, (_, index) => {
-      const values = withTrend
-        .map((r) => r.trend?.series[index])
-        .filter((v): v is number => v !== undefined)
-      return values.length > 0 ? values.reduce((sum, v) => sum + v, 0) / values.length : 0
-    })
-  }, [matched])
+  //
+  // Median, not mean: this card once reported prices rising 0.14% while the
+  // median was unchanged and movers split 10 down against 8 up. See
+  // src/lib/trend.ts for the rest of that story.
+  // The window the data actually supports, not the one we asked for.
+  const trendWindowDays = useMemo(
+    () => matched.find((r) => r.trend)?.trend?.windowDays ?? 90,
+    [matched],
+  )
 
-  const trendPct =
-    trendSeries.length >= 2 && trendSeries[0] > 0
-      ? ((trendSeries[trendSeries.length - 1] - trendSeries[0]) / trendSeries[0]) * 100
-      : 0
+  const trendResult = useMemo(
+    () =>
+      computeTrend(
+        matched.map((r) => ({
+          modelType: r.model_type,
+          // A back-filled sample is an assumption about a model we were not yet
+          // tracking. It may draw as a flat sparkline, but averaging it into a
+          // market statistic would manufacture data, so such models are left
+          // out of the basket entirely.
+          series: r.trend && r.trend.backfilled === 0 ? r.trend.series : null,
+        })),
+      ),
+    [matched],
+  )
 
   // --- shareable URL ------------------------------------------------------
   const buildQuery = useCallback(() => {
@@ -670,7 +687,7 @@ export function PriceExplorer({ rows, providers, updatedAt, providerSlugs }: Exp
 
       <div className="mb-4 flex flex-wrap gap-3.5">
         <StatsCard stats={stats} count={matched.length} />
-        <TrendCard series={trendSeries} pct={trendPct} />
+        <TrendCard result={trendResult} days={trendWindowDays} />
       </div>
 
       <FunStatsCard avgInput={stats.avgInput} />
@@ -1347,8 +1364,9 @@ function Stat({ label, value, accent }: { label: string; value: string; accent?:
   )
 }
 
-function TrendCard({ series, pct }: { series: number[]; pct: number }) {
-  const flat = Math.abs(pct) < 0.5
+function TrendCard({ result, days }: { result: TrendResult; days: number }) {
+  const pct = result.kind === 'series' ? result.pct : 0
+  const flat = isFlat(pct)
   const badge = flat
     ? 'bg-neutral-100 text-neutral-500'
     : pct < 0
@@ -1359,17 +1377,35 @@ function TrendCard({ series, pct }: { series: number[]; pct: number }) {
     <section className="min-w-[280px] flex-1 rounded-2xl border border-neutral-200 bg-white px-6 py-5">
       <div className="flex flex-wrap items-baseline justify-between gap-2.5">
         <h2 className="m-0 text-xs font-semibold uppercase tracking-wide text-neutral-500">
-          Blended price trend · 90 days
+          Blended price trend · {formatWindow(days)}
         </h2>
-        <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${badge}`}>
-          {flat ? 'Flat' : `${pct < 0 ? '↓' : '↑'} ${Math.abs(pct).toFixed(1)}%`}
-        </span>
+        {result.kind === 'series' && (
+          <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${badge}`}>
+            {flat ? 'Flat' : `${pct < 0 ? '↓' : '↑'} ${Math.abs(pct).toFixed(1)}%`}
+          </span>
+        )}
       </div>
-      <TrendChart series={series} />
-      <div className="flex justify-between text-xs text-neutral-400">
-        <span>{series.length > 0 ? `${formatPrice(series[0])} then` : '—'}</span>
-        <span>{series.length > 0 ? `${formatPrice(series[series.length - 1])} now` : '—'}</span>
-      </div>
+      {result.kind === 'series' ? (
+        <>
+          <TrendChart series={result.series} />
+          <div className="flex justify-between text-xs text-neutral-400">
+            <span>{`${formatPrice(result.series[0])} then`}</span>
+            <span>{`${formatPrice(result.series[result.series.length - 1])} now`}</span>
+          </div>
+        </>
+      ) : (
+        /*
+         * Not enough comparably-priced models with a price at every sample
+         * point. A flat line here would read as "prices held steady", which is
+         * a claim about the market; this is a statement about our data.
+         */
+        <p className="mt-3 mb-0 text-[13px] leading-relaxed text-neutral-500">
+          Not enough price history yet to show a trend.{' '}
+          {result.basketSize > 0
+            ? `Only ${result.basketSize} comparable ${result.basketSize === 1 ? 'model has' : 'models have'} a price recorded at every point in this window.`
+            : 'No comparable model has a price recorded at every point in this window.'}
+        </p>
+      )}
     </section>
   )
 }

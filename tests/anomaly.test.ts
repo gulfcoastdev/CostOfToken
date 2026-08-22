@@ -127,3 +127,74 @@ test('models added, not removed, raises nothing', () => {
   // Going 13 -> 73 is the fix landing, not a fault.
   assert.equal(hasBlocking(detectAnomalies(baseline(13), incoming(73))), false)
 })
+
+// ---------------------------------------------------------------------------
+// 006-truthful-price-trend: mixed-direction tier shifts.
+//
+// checkPriceShift was built on the assumption stated in its own docstring —
+// that a mis-latched tier moves *every* model by exactly the same ratio. That
+// held while a whole page shared one tier. It stopped holding when the tier
+// became a property of each table: one run then took some models from the
+// batch table (0.5x) and others from the fast-mode table (2x), no single ratio
+// dominated, uniformity fell below threshold, and nothing blocked.
+// ---------------------------------------------------------------------------
+
+/** Half the models doubled, half halved — a per-table tier mix-up. */
+function mixedTierShift(count: number): NormalizedModel[] {
+  return incoming(count).map((model, i) => ({
+    ...model,
+    pricing: { ...model.pricing, inputPrice: i % 2 === 0 ? 2 : 0.5 },
+  }))
+}
+
+test('a mixed-direction tier shift blocks the write', () => {
+  const found = detectAnomalies(baseline(20), mixedTierShift(20))
+  const shift = found.find((a) => a.code === 'tier_shaped_shift')
+
+  assert.ok(shift, 'a run split between 2x and 0.5x must be caught')
+  assert.equal(shift.severity, 'block')
+  assert.ok(hasBlocking(found))
+})
+
+test('a mixed-direction tier shift is caught even when no single ratio dominates', () => {
+  // Three tiers at once: standard, batch (0.5x) and fast mode (2x). The modal
+  // ratio here accounts for a third of the changes, nowhere near uniformity.
+  const models = incoming(30).map((model, i) => ({
+    ...model,
+    pricing: { ...model.pricing, inputPrice: [1, 0.5, 2][i % 3] },
+  }))
+
+  const found = detectAnomalies(baseline(30), models)
+  assert.ok(found.some((a) => a.code === 'tier_shaped_shift' && a.severity === 'block'))
+})
+
+test('a genuine repricing of varied sizes is not caught as a tier shift', () => {
+  // Real repricings land on untidy numbers. Exact halves and doubles are the
+  // signal; these are not.
+  const varied = [0.87, 1.13, 0.94, 1.05, 0.78, 1.22, 0.91, 1.08, 0.83, 1.17]
+  const models = incoming(10).map((model, i) => ({
+    ...model,
+    pricing: { ...model.pricing, inputPrice: varied[i] },
+  }))
+
+  const found = detectAnomalies(baseline(10), models)
+  assert.ok(!found.some((a) => a.code === 'tier_shaped_shift'))
+})
+
+test('a tiny provider cannot trip the tier check by coincidence', () => {
+  // Two models halving is a plausible price cut, not evidence of a parser bug.
+  const models = incoming(6).map((model, i) => ({
+    ...model,
+    pricing: { ...model.pricing, inputPrice: i < 2 ? 0.5 : 1 },
+  }))
+
+  const found = detectAnomalies(baseline(6), models)
+  assert.ok(!found.some((a) => a.code === 'tier_shaped_shift'))
+})
+
+test('the existing uniform-shift check still fires and still blocks', () => {
+  // Regression guard on behaviour deliberately kept: a whole provider moving by
+  // one ratio must keep raising the original code, not be silently reclassified.
+  const found = detectAnomalies(baseline(10), incoming(10, 2))
+  assert.ok(found.some((a) => a.code === 'uniform_price_shift' && a.severity === 'block'))
+})

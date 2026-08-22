@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { formatContext, formatPrice, formatRelativeTime } from '@/lib/format.ts'
+import { formatContext, formatPrice, formatRelativeTime, formatWindow, isFlat } from '@/lib/format.ts'
 import { modelPath, providerPath } from '@/lib/seo.ts'
 import type { ExplorerRow } from './price-explorer.tsx'
 import { MODEL_TYPE_LABELS, providerColor, SOURCE_LABELS } from './provider-colors.ts'
@@ -318,7 +318,9 @@ export function ModelDetails({ row }: { row: ExplorerRow }) {
     trend && trend.series.length >= 2 && trend.series[0] > 0
       ? ((trend.series[trend.series.length - 1] - trend.series[0]) / trend.series[0]) * 100
       : 0
-  const sparklineColor = pctChange < -0.5 ? '#059669' : pctChange > 0.5 ? '#DC2626' : '#A3A3A3'
+  // Same definition of "flat" the trend badge uses, so a card cannot colour a
+  // movement its own caption calls unchanged (Principle V: one formula).
+  const sparklineColor = isFlat(pctChange) ? '#A3A3A3' : pctChange < 0 ? '#059669' : '#DC2626'
   const typeLabel = row.model_type ? (MODEL_TYPE_LABELS[row.model_type] ?? row.model_type) : null
 
   return (
@@ -454,11 +456,11 @@ export function describeTrend(trend: ExplorerRow['trend'], pctChange: number): s
 
   const lastChanged = formatRelativeTime(trend.lastChangedAt)
 
-  if (Math.abs(pctChange) < 0.5) {
+  if (isFlat(pctChange)) {
     const times = trend.changeCount === 1 ? 'once' : `${trend.changeCount} times`
-    return `Changed ${times} but net unchanged over 90 days · last changed ${lastChanged}.`
+    return `Changed ${times} but net unchanged over ${formatWindow(trend.windowDays)} · last changed ${lastChanged}.`
   }
 
   const direction = pctChange < 0 ? 'down' : 'up'
-  return `Input price ${direction} ${Math.abs(Math.round(pctChange))}% over 90 days · last changed ${lastChanged}.`
+  return `Input price ${direction} ${Math.abs(Math.round(pctChange))}% over ${formatWindow(trend.windowDays)} · last changed ${lastChanged}.`
 }

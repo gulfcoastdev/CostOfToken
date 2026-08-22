@@ -22,6 +22,14 @@ export function parseMarkdownTables(markdown: string): SourceTable[] {
   const tables: SourceTable[] = []
   const headingStack: Array<{ level: number; text: string }> = []
 
+  // Loose text seen since the last table or heading, oldest first. A vendor
+  // that renders its pricing tiers as tabs emits the tab label here and then a
+  // generic heading, so this is frequently the only statement of the tier.
+  let looseText: string[] = []
+  // Loose text that preceded the current heading — the label belongs to the
+  // heading, and so to every table under it until the next heading.
+  let headingText: string[] = []
+
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]
 
@@ -32,10 +40,16 @@ export function parseMarkdownTables(markdown: string): SourceTable[] {
         headingStack.pop()
       }
       headingStack.push({ level, text: cleanCell(heading[2]) })
+      headingText = looseText
+      looseText = []
       continue
     }
 
-    if (!isTableRow(line)) continue
+    if (!isTableRow(line)) {
+      const label = asLabel(line)
+      if (label) looseText.push(label)
+      continue
+    }
 
     // A pipe table is a header row, a separator row, then body rows.
     const separator = lines[i + 1]
@@ -53,13 +67,37 @@ export function parseMarkdownTables(markdown: string): SourceTable[] {
 
     if (rows.length > 0) {
       const captionPath = [...headingStack].reverse().map((h) => h.text)
-      tables.push({ caption: captionPath[0] ?? '', captionPath, headers, rows })
+      // Nearest first: text between the heading and this table outranks text
+      // that introduced the heading itself.
+      const labels = [...looseText, ...headingText].reverse().slice(0, MAX_LABELS)
+      tables.push({ caption: captionPath[0] ?? '', captionPath, labels, headers, rows })
     }
 
+    looseText = []
     i = cursor - 1
   }
 
   return tables
+}
+
+/**
+ * A tab label is a short noun phrase — "Standard", "Fast mode", "Prices per 1M
+ * tokens." A sentence is prose and means nothing about the table.
+ *
+ * The distinction matters because the same data-residency paragraph repeats
+ * above several tables in OpenAI's document; without a length bound it would
+ * become tier evidence for all of them.
+ */
+const MAX_LABEL_LENGTH = 48
+const MAX_LABELS = 6
+
+function asLabel(line: string): string | null {
+  const text = cleanCell(line)
+  if (!text) return null
+  // Blockquotes and list items are body copy, never tab labels.
+  if (/^[>*+-]\s/.test(line.trimStart())) return null
+  if (text.length > MAX_LABEL_LENGTH) return null
+  return text
 }
 
 function isTableRow(line: string | undefined): boolean {

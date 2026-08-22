@@ -1,6 +1,26 @@
 /** Formatting shared by the server page and the client explorer. */
 
 /**
+ * Percentage movement below which a price trend is reported as flat.
+ *
+ * One definition, three consumers: the badge that says "Flat", the chart that
+ * draws the line, and the trend statistic itself. They previously disagreed —
+ * the badge read "Flat" and both endpoint labels read the same dollar value
+ * while the line drawn between them climbed the full height of the card,
+ * because the chart scaled to the series' own range with no floor. A movement
+ * of 0.14% filled the box.
+ *
+ * Keeping the number here is what makes that contradiction impossible rather
+ * than merely unlikely (Principle V: one formula per concept).
+ */
+export const FLAT_PERCENT = 0.5
+
+/** Whether a percentage movement is too small to report as a direction. */
+export function isFlat(pct: number): boolean {
+  return Math.abs(pct) < FLAT_PERCENT
+}
+
+/**
  * Money, matching the convention used across the app and API:
  * `null` has no such tier, `0` is genuinely free.
  */
@@ -62,4 +82,17 @@ export function blendedPrice(
   if (input === null || input === undefined) return null
   if (output === null || output === undefined) return null
   return (input + output) / 2
+}
+
+/**
+ * A trend window, in the units a reader thinks in.
+ *
+ * The card once said "90 days" over a record eleven days old. It now names the
+ * span it actually covers, so the label cannot overstate the evidence.
+ */
+export function formatWindow(days: number): string {
+  if (days >= 365) return `${Math.round(days / 365)} year${days >= 730 ? 's' : ''}`
+  if (days >= 60) return `${Math.round(days / 30)} months`
+  if (days >= 14) return `${Math.round(days / 7)} weeks`
+  return `${days} day${days === 1 ? '' : 's'}`
 }

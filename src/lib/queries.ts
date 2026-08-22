@@ -1,5 +1,6 @@
 import { unstable_cache } from 'next/cache'
 import { sql } from './db.ts'
+import { sampleWindow, windowDays } from './trend.ts'
 
 /**
  * Cache a read, falling back to reading directly when there is no cache.
@@ -458,6 +459,22 @@ function toFeedEvent(record: FeedRecord): FeedEvent {
 export interface PriceTrend {
   /** Evenly spaced input-price samples, oldest first. */
   series: number[]
+  /**
+   * How many leading samples predate the model's first recording, and so are
+   * back-filled assumption rather than observation.
+   *
+   * The sparkline may draw them — a flat run honestly reads as "we weren't
+   * tracking it yet". The blended trend may not: averaging an assumed price
+   * into a market statistic manufactures a data point. A model with any
+   * back-filled sample is left out of that basket instead.
+   */
+  backfilled: number
+  /**
+   * Days the series actually spans — the requested window, or the age of the
+   * record if that is shorter. The card labels itself with this rather than
+   * claiming a window it has no data for.
+   */
+  windowDays: number
   /** When the price last actually moved, or null if it has never changed. */
   lastChangedAt: string | null
   changeCount: number
@@ -512,10 +529,14 @@ async function getPriceTrendsUncached(
   }
 
   const now = Date.now()
-  const windowMs = days * 24 * 60 * 60 * 1000
-  const sampleTimes = Array.from({ length: points }, (_, i) =>
-    points === 1 ? now : now - windowMs + (windowMs * i) / (points - 1),
-  )
+
+  // Fit the window to the history that exists. Asking for 90 days when the
+  // record begins eleven days ago put five of six samples before the first
+  // observation, so every model was back-filled, every model was excluded from
+  // the trend basket, and the card could say nothing at all.
+  const earliest = rows.length > 0 ? Math.min(...rows.map((r) => r.recorded_at.getTime())) : null
+  const sampleTimes = sampleWindow({ now, days, points, earliest })
+  const span = windowDays({ now, days, earliest })
 
   const trends = new Map<string, PriceTrend>()
 
@@ -532,6 +553,8 @@ async function getPriceTrendsUncached(
       return value
     })
 
+    const backfilled = sampleTimes.filter((time) => time < usable[0].at).length
+
     let lastChangedAt: string | null = null
     let changeCount = 0
     for (let i = 1; i < usable.length; i++) {
@@ -541,7 +564,7 @@ async function getPriceTrendsUncached(
       }
     }
 
-    trends.set(modelId, { series, lastChangedAt, changeCount })
+    trends.set(modelId, { series, backfilled, windowDays: span, lastChangedAt, changeCount })
   }
 
   return trends
