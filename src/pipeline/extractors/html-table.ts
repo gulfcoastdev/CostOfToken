@@ -33,6 +33,23 @@ export interface SourceTable {
    * levels further up.
    */
   captionPath: string[]
+  /**
+   * Bare text lines standing immediately above the table, nearest first — the
+   * rendered tab labels, e.g. ["Standard", "Prices per 1M tokens."].
+   *
+   * Deliberately separate from `captionPath` rather than folded into it.
+   * `captionPath` is a *heading* breadcrumb and is read positionally: Google
+   * recovers a model name from an ancestor heading, so mixing loose text into
+   * it would shift those indices and break that extractor silently.
+   *
+   * Load-bearing because a tier is often stated nowhere else. OpenAI renders
+   * Standard/Batch/Flex/Fast as tabs; the markdown emits the tab label as a
+   * loose line and then a generic heading, so ten of its sixteen tables are
+   * captioned "Grouped Pricing Table data" and four of those are non-standard
+   * tiers. Reading headings alone admitted batch, fast-mode and fine-tuning
+   * rates as standard per-token prices.
+   */
+  labels: string[]
   /** Flattened header labels, one per column, colspans expanded. */
   headers: string[]
   rows: string[][]
@@ -134,7 +151,9 @@ function parseOneTable(
   const explicitCaption = cleanText($table.find('caption').first().text())
   const captionPath = explicitCaption ? [explicitCaption, ...headingPath] : headingPath
 
-  return { caption: captionPath[0] ?? '', captionPath, headers, rows }
+  // The HTML reader has no loose-text equivalent: where a tier is a tab, the
+  // unselected tabs are not in the document at all. Markdown supplies labels.
+  return { caption: captionPath[0] ?? '', captionPath, labels: [], headers, rows }
 }
 
 /** First breadcrumb entry matching `pattern`, searching nearest-first. */
@@ -151,10 +170,92 @@ export function findInPath(table: SourceTable, pattern: RegExp): string | null {
  * Tracking them as separate tiers is a later milestone.
  */
 export const NON_STANDARD_TIER =
-  /\b(batch|flex|priority|provisioned|scale tier|fast (mode|pricing))\b/i
+  /\b(batch|flex|priority|provisioned|scale tier|fast (mode|pricing)|fine[- ]?tun\w*)\b/i
 
 export function isNonStandardTier(table: SourceTable): boolean {
-  return table.captionPath.some((entry) => NON_STANDARD_TIER.test(entry))
+  return evidence(table).some((entry) => NON_STANDARD_TIER.test(entry))
+}
+
+/** The vendor's own word for its list price, as opposed to a discounted tier. */
+const STANDARD_TIER = /\b(standard|on[- ]demand|pay[- ]as[- ]you[- ]go|list price)\b/i
+
+/**
+ * Every string that may carry tier or unit evidence for a table, nearest first.
+ *
+ * Headings and tab labels are both statements by the vendor about what the
+ * table contains, so both count. Prices are deliberately *not* consulted:
+ * inferring a tier from the numbers would let a genuine 50% price cut be
+ * reclassified as a batch table, which is the inversion this whole feature
+ * exists to prevent.
+ */
+function evidence(table: SourceTable): string[] {
+  return [...table.labels, ...table.captionPath]
+}
+
+export type PricingTier = 'standard' | 'non_standard' | 'unknown'
+
+/**
+ * Which commercial tier a table's prices belong to.
+ *
+ * Only `standard` may be catalogued. `unknown` is a rejection, not a default —
+ * assuming standard in the absence of evidence is exactly how batch and
+ * fast-mode rates entered the catalogue as headline prices, and how one model
+ * came to record three different prices inside thirty minutes.
+ *
+ * `soleTable` is the one escape hatch: a provider whose document contains no
+ * tier vocabulary anywhere has only ever published one price, and rejecting it
+ * would take that provider out of the catalogue entirely — trading one
+ * truthfulness failure for another. It MUST be decided from the whole document,
+ * never from a table's position in it, or it reintroduces order-dependence.
+ */
+export function classifyTier(
+  table: SourceTable,
+  options: { soleTable?: boolean } = {},
+): PricingTier {
+  const found = evidence(table)
+  if (found.some((entry) => NON_STANDARD_TIER.test(entry))) return 'non_standard'
+  if (found.some((entry) => STANDARD_TIER.test(entry))) return 'standard'
+  return options.soleTable ? 'standard' : 'unknown'
+}
+
+/**
+ * True when a document states no pricing tier anywhere, so its tables cannot be
+ * distinguished by tier and there is nothing to confuse.
+ */
+export function hasNoTierVocabulary(tables: SourceTable[]): boolean {
+  return !tables.some((table) =>
+    evidence(table).some((entry) => NON_STANDARD_TIER.test(entry) || STANDARD_TIER.test(entry)),
+  )
+}
+
+export type PricingUnit = 'per_token' | 'per_image' | 'per_second' | 'per_character' | 'per_hour' | 'per_request' | 'unknown'
+
+/** Units a vendor quotes that are not price-per-token, longest match first. */
+const UNIT_PATTERNS: Array<[RegExp, PricingUnit]> = [
+  [/per (image|generated image)\b|\/ ?image\b/i, 'per_image'],
+  [/per (second|minute)\b|\/ ?(sec|min)\b/i, 'per_second'],
+  [/per character\b|\/ ?char\b/i, 'per_character'],
+  [/per hour\b|\/ ?hour\b|\/ ?hr\b/i, 'per_hour'],
+  [/per (request|call)\b/i, 'per_request'],
+  [/per (1m |1,000,000 |million )?tokens?\b|\/ ?mtok\b|per 1k tokens\b/i, 'per_token'],
+]
+
+/**
+ * What a table's prices are charged against.
+ *
+ * Column headers win over the surrounding prose, because a section introduced
+ * as "Prices per 1M tokens unless noted" then goes on to note otherwise. Only
+ * `per_token` may be catalogued: a per-image or fine-tuning-per-hour rate sat
+ * in the catalogue as though it were a token price, and fed a token-price
+ * trend on the front page.
+ */
+export function classifyUnit(table: SourceTable): PricingUnit {
+  for (const source of [table.headers.join(' '), ...evidence(table)]) {
+    for (const [pattern, unit] of UNIT_PATTERNS) {
+      if (pattern.test(source)) return unit
+    }
+  }
+  return 'unknown'
 }
 
 /**

@@ -7,7 +7,13 @@ import {
   resetOpenRouterCache,
 } from '../src/pipeline/extractors/openrouter.ts'
 import { parseMarkdownTables } from '../src/pipeline/extractors/markdown-table.ts'
-import { findInPath, isNonStandardTier, parseTables } from '../src/pipeline/extractors/html-table.ts'
+import {
+  classifyTier,
+  classifyUnit,
+  findInPath,
+  isNonStandardTier,
+  parseTables,
+} from '../src/pipeline/extractors/html-table.ts'
 import { decodeFlightPayload, extractModelObjects } from '../src/pipeline/extractors/xai.ts'
 
 test('parseTables expands colspan group headers into flat column names', () => {
@@ -125,14 +131,23 @@ test('xAI object extraction survives braces inside string values', () => {
   assert.equal(found.name, 'grok-braces')
 })
 
-test('a repeated model keeps the first tier, not the last', async () => {
+test('a repeated model under an unrecognised tier is refused, and the last table never wins', async () => {
   // Regression guard: OpenAI renders Standard/Batch/Flex/Priority as four
   // tables with identical headers under one heading. The tier name is a tab,
   // not a heading, so the breadcrumb can't tell them apart — and keying by
   // model id meant the last table won, storing Priority (2x standard) as the
   // headline price.
-  // The markdown source names its tiers, but this guards the case where two
-  // tables still collide — e.g. a tier heading we don't recognise.
+  //
+  // AMENDED for 006-truthful-price-trend, deliberately and not as a weakening
+  // (Principle II). This test previously asserted the *first* table wins. That
+  // rule made the recorded tier a function of document order, and when the
+  // vendor's table order shifted, four runs in thirty minutes recorded up to
+  // three different prices for one model against unchanged upstream content.
+  // Two colliding tables with no recognisable tier are now unclassifiable, and
+  // an unclassifiable row is refused rather than guessed at.
+  //
+  // What this still guards is the original incident, which has not changed:
+  // the last table must never win.
   const md = [
     '## Flagship models',
     '',
@@ -147,9 +162,14 @@ test('a repeated model keeps the first tier, not the last', async () => {
 
   const models = await openaiExtractor.extract({ fetchText: async () => md })
 
-  assert.equal(models.length, 1)
-  assert.equal(models[0].pricing.inputPrice, 5)
-  assert.equal(models[0].pricing.outputPrice, 30)
+  assert.equal(models.length, 0, 'an unclassifiable tier is refused, not assumed standard')
+
+  // The original incident, restated so it cannot regress: whatever else
+  // happens, the 2x table must never become the recorded price.
+  assert.ok(
+    !models.some((m) => m.pricing.inputPrice === 10),
+    'the last (2x) table must never win',
+  )
 })
 
 test('markdown tables carry heading breadcrumbs and unescape cells', () => {
@@ -288,3 +308,185 @@ test('minimax is tracked', async () => {
     'minimax has no extractor',
   )
 })
+
+// ---------------------------------------------------------------------------
+// 006-truthful-price-trend: tier and unit admission.
+//
+// The incident: a vendor states each table's pricing tier as a rendered tab
+// label — a bare line of text above the table — not as a heading. Reading tiers
+// from headings alone left ten of sixteen tables captioned "Grouped Pricing
+// Table data" with no tier evidence, so batch, fast-mode and fine-tuning rates
+// entered the catalogue as standard per-token prices. Which value survived was
+// decided by document order, so four runs in thirty minutes recorded up to
+// three different prices for one model against unchanged upstream content.
+// ---------------------------------------------------------------------------
+
+const FIXTURE = new URL('./fixtures/openai-pricing-2026-08-22.md', import.meta.url)
+
+async function readFixture(): Promise<string> {
+  const { readFile } = await import('node:fs/promises')
+  return readFile(FIXTURE, 'utf8')
+}
+
+test('the parser captures the bare text lines that precede a table heading', async () => {
+  const tables = parseMarkdownTables(await readFixture())
+
+  // "Standard" / "Batch" / "Fast mode" are tab labels, emitted as loose text
+  // above the table's own heading. They are the only statement of the tier.
+  const standard = tables.find((t) => t.caption === 'Standard pricing data')
+  const batch = tables.find((t) => t.caption === 'Batch pricing data')
+
+  assert.ok(standard?.labels.includes('Standard'), 'standard table should carry its tab label')
+  assert.ok(batch?.labels.includes('Batch'), 'batch table should carry its tab label')
+})
+
+test('a repeated explanatory paragraph is not mistaken for a tier label', async () => {
+  const tables = parseMarkdownTables(await readFixture())
+
+  // The data-residency notice repeats above several tables. It is prose, not a
+  // label, and must not become tier evidence.
+  for (const table of tables) {
+    for (const label of table.labels) {
+      assert.ok(
+        !/regional processing|data residency/i.test(label),
+        `prose leaked into labels: ${label.slice(0, 60)}`,
+      )
+    }
+  }
+})
+
+test('generically-captioned tables are still classified by tier', async () => {
+  const tables = parseMarkdownTables(await readFixture())
+
+  // Ten tables share the caption "Grouped Pricing Table data" and two share
+  // "Pricing Table data". Four of those twelve are non-standard tiers, stated
+  // only in the tab label above them.
+  const generic = tables.filter((t) => /Grouped Pricing Table data|Pricing Table data/.test(t.caption))
+  const nonStandard = generic.filter((t) => classifyTier(t) === 'non_standard')
+
+  // Identify them rather than counting: a bare count passes for the wrong
+  // reasons the moment the vendor adds or drops a table.
+  const tiers = nonStandard.map((t) => t.labels.find((l) => /batch|fast mode|fine[- ]?tun/i.test(l)))
+  assert.deepEqual(
+    tiers.map((t) => t?.toLowerCase()).sort(),
+    ['batch', 'batch', 'batch', 'fast mode', 'finetuning'],
+    'batch image, batch video, batch fine-tuning, fast-mode code and standard fine-tuning must all be refused',
+  )
+
+  // Fine-tuning is refused at both its tiers: it is a different product, not a
+  // discount on inference, so even its *standard* table is not a standard rate.
+  // The two are refused for different reasons — the first carries a Finetuning
+  // label, the second only a Batch label — so assert on the outcome, which is
+  // what matters, rather than on which word caught them.
+  const fineTuning = tables.filter((t) => t.headers.some((h) => /^\s*training\s*$/i.test(h)))
+  assert.equal(fineTuning.length, 2, 'both fine-tuning tables carry a per-hour Training column')
+  for (const table of fineTuning) assert.equal(classifyTier(table), 'non_standard')
+})
+
+test('a table with no tier evidence is unknown, not standard', () => {
+  const md = [
+    '# Pricing',
+    '',
+    '### Some Table',
+    '',
+    '| Model | Input | Output |',
+    '| --- | --- | --- |',
+    '| a-model | $1.00 | $2.00 |',
+    '',
+    '### Some Table',
+    '',
+    '| Model | Input | Output |',
+    '| --- | --- | --- |',
+    '| a-model | $2.00 | $4.00 |',
+  ].join('\n')
+
+  // Two colliding tables, no tier vocabulary anywhere. Silence is not consent:
+  // an unclassifiable row is rejected rather than assumed standard.
+  const [first, second] = parseMarkdownTables(md)
+  assert.equal(classifyTier(first), 'unknown')
+  assert.equal(classifyTier(second), 'unknown')
+})
+
+test('a provider publishing one untiered table still reports it as standard', () => {
+  const md = [
+    '# Pricing',
+    '',
+    '| Model | Input | Output |',
+    '| --- | --- | --- |',
+    '| a-model | $1.00 | $2.00 |',
+  ].join('\n')
+
+  // Without this escape hatch every provider that has never had a batch tier
+  // would be rejected wholesale — trading one truthfulness failure for another.
+  const [only] = parseMarkdownTables(md)
+  assert.equal(classifyTier(only, { soleTable: true }), 'standard')
+})
+
+test('incomparable rates never enter as standard per-token prices', async () => {
+  const models = await openaiExtractor.extract({ fetchText: readFixture } as never)
+  const ids = new Set(models.map((m) => m.modelId))
+
+  // o4-mini-2025-04-16 appears only in the fine-tuning tables, whose Training
+  // column is priced per hour. It was stored at $4.00, a fine-tuning rate,
+  // presented as this model's standard inference price.
+  assert.ok(!ids.has('o4-mini-2025-04-16'), 'a fine-tuning-only model must not be catalogued')
+
+  // Per-second video pricing is a different unit entirely.
+  assert.ok(!ids.has('sora-2') && !ids.has('sora-2-pro'), 'per-second rates must not be catalogued')
+
+  // gpt-image-2 is listed once per modality — Image at $8.00, Text at $5.00 —
+  // and the catalogue took whichever row came first. Its stored input price is
+  // a text-token price, so the Text row is the one that belongs there.
+  const image = models.find((m) => m.modelId === 'gpt-image-2')
+  assert.equal(image?.pricing.inputPrice, 5, 'the text-modality row is the token price')
+})
+
+test('extraction is deterministic and independent of table order', async () => {
+  const md = await readFixture()
+
+  const first = await openaiExtractor.extract({ fetchText: async () => md } as never)
+  const second = await openaiExtractor.extract({ fetchText: async () => md } as never)
+  assert.deepEqual(second, first, 'identical content must yield identical records')
+
+  // The 2026-08-11 flapping: the recorded tier followed the order the tables
+  // happened to appear in, so unchanged upstream content produced up to three
+  // different prices for one model within thirty minutes.
+  const reordered = reverseTableBlocks(md)
+  const third = await openaiExtractor.extract({ fetchText: async () => reordered } as never)
+
+  const priceOf = (models: Awaited<ReturnType<typeof openaiExtractor.extract>>, id: string) =>
+    models.find((m) => m.modelId === id)?.pricing.inputPrice ?? null
+
+  for (const id of ['gpt-5.6-terra', 'gpt-5.3-codex', 'gpt-5.6-sol']) {
+    assert.equal(priceOf(third, id), priceOf(first, id), `${id} must not depend on table order`)
+  }
+})
+
+/**
+ * Reverse the order of the document's table sections, keeping each intact.
+ *
+ * A section starts at its tab label, not at its `###` heading — the label sits
+ * above the heading, and cutting between them would detach a table from the
+ * only statement of its tier, testing the transformation rather than the
+ * parser. So each block is grown backwards from its heading to just after the
+ * previous table's last row.
+ */
+function reverseTableBlocks(md: string): string {
+  const lines = md.split('\n')
+  const isRow = (line: string | undefined) => !!line && line.trimStart().startsWith('|')
+
+  const starts: number[] = []
+  lines.forEach((line, i) => {
+    if (!line.startsWith('### ')) return
+    let start = i
+    while (start > 0 && !isRow(lines[start - 1]) && !lines[start - 1].startsWith('### ')) start--
+    starts.push(start)
+  })
+  if (starts.length < 2) return md
+
+  const head = lines.slice(0, starts[0])
+  const blocks = starts.map((start, i) =>
+    lines.slice(start, i + 1 < starts.length ? starts[i + 1] : lines.length),
+  )
+  return [...head, ...blocks.reverse().flat()].join('\n')
+}
