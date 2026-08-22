@@ -89,6 +89,13 @@ merely tidier, it is *more correct*:
   Fast as tabs. Tab labels aren't headings, so no parser can tell the tiers
   apart — and because only the selected tab is in the document, most rows are
   missing. The markdown has `### Standard pricing data` as a real heading.
+
+  Not for every table, though. Ten of OpenAI's sixteen tables are captioned
+  `### Grouped Pricing Table data`, which names no tier at all, and four of
+  those are batch or fast-mode rates. Their tier is stated instead as a bare
+  line of text above the heading — the rendered tab label. Extractors read
+  those lines as `SourceTable.labels` and classify from them; a table whose
+  tier cannot be established is refused rather than assumed standard.
 - **Coverage.** OpenAI's HTML exposed 13 models; the markdown lists 73.
 - **Size.** 20KB instead of 543KB.
 
@@ -128,8 +135,22 @@ where Zhipu's own page says $1.40/1M. So:
 Vendors publish Batch, Flex, and Priority tiers alongside standard rates. Batch
 is typically 50% off and asynchronous. Comparing one vendor's batch price
 against another's standard price would make the whole table wrong, so
-non-standard tiers are skipped. Tracking them as separate, labelled tiers is a
-natural next step.
+non-standard tiers are skipped. Fine-tuning rates are skipped for the same
+reason — a different product, not a discount — as are rates quoted per image,
+per second or per hour. Tracking them as separate, labelled tiers is a natural
+next step.
+
+A model listed once per modality resolves to its text row: `gpt-image-2` is
+published at $8.00 for image tokens and $5.00 for text, and the catalogue's
+input price is a text-token price.
+
+Duplicates are resolved **by tier, never by document order**. The rule was once
+"first table wins", which made the recorded price a function of the order the
+vendor printed its tables in. When that order shifted, 73 of 74 OpenAI models
+recorded two or three different prices inside one 30-minute window, and the
+front page reported a price rise that had not happened. Repeated runs against
+unchanged upstream content must produce zero price changes; `tests/extractors.test.ts`
+guards that directly.
 
 ### Anomaly detection
 

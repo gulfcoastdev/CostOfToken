@@ -1,6 +1,26 @@
 /** Formatting shared by the server page and the client explorer. */
 
 /**
+ * Percentage movement below which a price trend is reported as flat.
+ *
+ * One definition, three consumers: the badge that says "Flat", the chart that
+ * draws the line, and the trend statistic itself. They previously disagreed —
+ * the badge read "Flat" and both endpoint labels read the same dollar value
+ * while the line drawn between them climbed the full height of the card,
+ * because the chart scaled to the series' own range with no floor. A movement
+ * of 0.14% filled the box.
+ *
+ * Keeping the number here is what makes that contradiction impossible rather
+ * than merely unlikely (Principle V: one formula per concept).
+ */
+export const FLAT_PERCENT = 0.5
+
+/** Whether a percentage movement is too small to report as a direction. */
+export function isFlat(pct: number): boolean {
+  return Math.abs(pct) < FLAT_PERCENT
+}
+
+/**
  * Money, matching the convention used across the app and API:
  * `null` has no such tier, `0` is genuinely free.
  */

@@ -1,3 +1,12 @@
+import { scaleSeries } from '@/lib/chart-scale.ts'
+
+/**
+ * Both charts here scale through `scaleSeries`, which floors the range they
+ * plot against. They previously scaled to the series' own min and max, so any
+ * movement at all — including one the card's own badge called "Flat" — was
+ * stretched to the full height of the box. See src/lib/chart-scale.ts.
+ */
+
 /** Tiny inline price sparkline. Pure presentation, no state. */
 export function Sparkline({
   series,
@@ -12,16 +21,13 @@ export function Sparkline({
 }) {
   if (series.length < 2) return null
 
-  const min = Math.min(...series)
-  const max = Math.max(...series)
-  const range = max - min || 1
   const padding = 2
+  const ys = scaleSeries(series, height, padding)
 
   const points = series
-    .map((value, index) => {
+    .map((_value, index) => {
       const x = (index / (series.length - 1)) * (width - padding * 2) + padding
-      const y = height - padding - ((value - min) / range) * (height - padding * 2)
-      return `${x.toFixed(1)},${y.toFixed(1)}`
+      return `${x.toFixed(1)},${ys[index].toFixed(1)}`
     })
     .join(' ')
 
@@ -47,15 +53,12 @@ export function TrendChart({ series }: { series: number[] }) {
 
   const width = 320
   const height = 100
-  const min = Math.min(...series)
-  const max = Math.max(...series)
-  // A flat line should sit mid-box rather than pinning to an edge.
-  const range = max - min || max * 0.1 || 1
+  const padding = 8
 
+  const ys = scaleSeries(series, height - 6, padding)
   const x = (index: number) => (index / (series.length - 1)) * 300 + 10
-  const y = (value: number) => 90 - ((value - min) / range) * 76 - 4
 
-  const line = series.map((value, index) => `${x(index).toFixed(1)},${y(value).toFixed(1)}`).join(' ')
+  const line = series.map((_value, index) => `${x(index).toFixed(1)},${ys[index].toFixed(1)}`).join(' ')
   const area = `${line} ${x(series.length - 1).toFixed(1)},90 10,90`
 
   return (

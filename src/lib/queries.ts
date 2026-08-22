@@ -458,6 +458,16 @@ function toFeedEvent(record: FeedRecord): FeedEvent {
 export interface PriceTrend {
   /** Evenly spaced input-price samples, oldest first. */
   series: number[]
+  /**
+   * How many leading samples predate the model's first recording, and so are
+   * back-filled assumption rather than observation.
+   *
+   * The sparkline may draw them — a flat run honestly reads as "we weren't
+   * tracking it yet". The blended trend may not: averaging an assumed price
+   * into a market statistic manufactures a data point. A model with any
+   * back-filled sample is left out of that basket instead.
+   */
+  backfilled: number
   /** When the price last actually moved, or null if it has never changed. */
   lastChangedAt: string | null
   changeCount: number
@@ -532,6 +542,8 @@ async function getPriceTrendsUncached(
       return value
     })
 
+    const backfilled = sampleTimes.filter((time) => time < usable[0].at).length
+
     let lastChangedAt: string | null = null
     let changeCount = 0
     for (let i = 1; i < usable.length; i++) {
@@ -541,7 +553,7 @@ async function getPriceTrendsUncached(
       }
     }
 
-    trends.set(modelId, { series, lastChangedAt, changeCount })
+    trends.set(modelId, { series, backfilled, lastChangedAt, changeCount })
   }
 
   return trends
