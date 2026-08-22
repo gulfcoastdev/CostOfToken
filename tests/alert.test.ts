@@ -148,3 +148,21 @@ test('sending no-ops when unconfigured', async () => {
   assert.equal(result.sent, false)
   assert.match(result.reason ?? '', /not configured/i)
 })
+
+test('the self-test alert is clearly labelled as a test', () => {
+  // `?test_alert=true` exists so that configuring email in a dashboard can be
+  // verified without waiting for a real fault. Its body must never be
+  // mistakable for a genuine finding.
+  const sample = summary({
+    dryRun: true,
+    providers: [provider({ provider: 'test', anomalies: [{
+      code: 'unsettled_price', severity: 'warn',
+      message: 'This is a test alert. No pipeline ran and nothing was written. A real one looks like this.',
+      details: { models: [{ modelId: 'example-model', before: 0.44, after: 0.22, hours: 9, ratio: 0.5 }] },
+    }] })],
+  })
+  assert.ok(shouldAlert(sample))
+  const alert = buildAlert(sample)
+  assert.match(alert.body, /test alert/i)
+  assert.match(alert.body, /nothing was written/i)
+})
