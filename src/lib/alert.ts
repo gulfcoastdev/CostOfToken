@@ -152,7 +152,11 @@ export interface SendResult {
 export async function sendAlert(alert: Alert): Promise<SendResult> {
   const apiKey = process.env.RESEND_API_KEY
   const to = process.env.ALERT_EMAIL_TO
-  const from = process.env.ALERT_EMAIL_FROM ?? 'alerts@costoftoken.com'
+  // Resend's shared sender, which needs no domain verification. The default
+  // used to be alerts@costoftoken.com, which 403s until that domain is
+  // verified — so the out-of-the-box behaviour was "configured but silent",
+  // the worst of both. Set ALERT_EMAIL_FROM once a domain is verified.
+  const from = process.env.ALERT_EMAIL_FROM ?? 'onboarding@resend.dev'
 
   if (!apiKey || !to) return { sent: false, reason: 'not configured' }
 
