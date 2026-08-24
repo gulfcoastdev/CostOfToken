@@ -422,11 +422,19 @@ test('incomparable rates never enter as standard per-token prices', async () => 
   assert.ok(!ids.has('sora-2') && !ids.has('sora-2-pro'), 'per-second rates must not be catalogued')
 
   // gpt-image-2 is listed once per modality — Image at $8.00, then Text at
-  // $5.00. One id, first listing wins, so the id carries the numbers OpenAI
-  // leads with. No suffixed ids: modality is already a column, and inventing
-  // public identifiers to solve that is surface we would have to keep forever.
-  assert.equal(models.find((m) => m.modelId === 'gpt-image-2')?.pricing.inputPrice, 8)
-  assert.equal(models.find((m) => m.modelId === 'gpt-audio')?.pricing.inputPrice, 32)
+  // $5.00. Until 009 the first listing won ("the numbers OpenAI leads with"),
+  // but the lead row turned out to be presentation order, not a pricing
+  // statement: between 2026-08-22 and 2026-08-23 OpenAI flipped Audio/Text
+  // ordering and 14 models recorded 8x–16.7x phantom changes. The Text row is
+  // the headline now — the only row in the unit the catalogue compares on.
+  // Its output cell is "-", and that stays null rather than borrowing the
+  // Image row's $30. No suffixed ids: modality is already a column, and
+  // inventing public identifiers to solve that is surface kept forever.
+  const image2 = models.find((m) => m.modelId === 'gpt-image-2')?.pricing
+  assert.equal(image2?.inputPrice, 5)
+  assert.equal(image2?.cachedInputPrice, 1.25)
+  assert.equal(image2?.outputPrice, null)
+  assert.equal(models.find((m) => m.modelId === 'gpt-audio')?.pricing.inputPrice, 2.5)
   assert.ok(!models.some((m) => m.modelId.includes(':')), 'no invented identifiers')
 })
 
@@ -479,3 +487,170 @@ function reverseTableBlocks(md: string): string {
   )
   return [...head, ...blocks.reverse().flat()].join('\n')
 }
+
+// ---------------------------------------------------------------------------
+// 009-openai-modality-pricing: modality-grouped tables.
+//
+// The incident: the realtime/audio tables gained a Modality column — one row
+// per modality per model, Audio listed first (fixture lines ~241–269). "First
+// row per model wins" therefore published audio-token rates as headline
+// prices, and when OpenAI flipped the row order between 2026-08-22 and
+// 2026-08-23 the catalogue recorded 8x–16.7x phantom price changes for 14
+// models against unchanged upstream prices. The Text row is the headline —
+// it is the only row priced in the unit the whole catalogue compares on.
+// ---------------------------------------------------------------------------
+
+test('a modality table yields the Text row as the headline price', async () => {
+  const models = await openaiExtractor.extract({ fetchText: readFixture } as never)
+  const byId = new Map(models.map((m) => [m.modelId, m]))
+
+  // Audio rows say $32 / $0.40; the Text rows below them say $4 / $0.40.
+  assert.equal(byId.get('gpt-realtime')?.pricing.inputPrice, 4)
+  assert.equal(byId.get('gpt-realtime')?.pricing.cachedInputPrice, 0.4)
+  assert.equal(byId.get('gpt-audio-1.5')?.pricing.inputPrice, 2.5)
+  assert.equal(byId.get('gpt-realtime-mini')?.pricing.inputPrice, 0.6)
+})
+
+test('modality row order does not decide the price', async () => {
+  const table = (rows: string[]) =>
+    [
+      '# Pricing',
+      '',
+      '### Grouped Pricing Table data',
+      '',
+      '| Model | Modality | Input | Cached input | Output / cost |',
+      '| --- | --- | --- | --- | --- |',
+      ...rows,
+    ].join('\n')
+
+  const audioFirst = table([
+    '| a-model | Audio | $32.00 | $0.40 | $64.00 |',
+    '| a-model | Text | $4.00 | $0.40 | $16.00 |',
+  ])
+  const textFirst = table([
+    '| a-model | Text | $4.00 | $0.40 | $16.00 |',
+    '| a-model | Audio | $32.00 | $0.40 | $64.00 |',
+  ])
+
+  const [fromAudioFirst] = await openaiExtractor.extract({
+    fetchText: async () => audioFirst,
+  } as never)
+  const [fromTextFirst] = await openaiExtractor.extract({
+    fetchText: async () => textFirst,
+  } as never)
+
+  assert.equal(fromAudioFirst.pricing.inputPrice, 4, 'Text row wins even listed second')
+  assert.deepEqual(
+    fromTextFirst.pricing.inputPrice,
+    fromAudioFirst.pricing.inputPrice,
+    'reordering modality rows must not change the extracted price',
+  )
+})
+
+test('a model with no Text row gets no borrowed headline price', async () => {
+  const md = [
+    '# Pricing',
+    '',
+    '### Grouped Pricing Table data',
+    '',
+    '| Model | Modality | Input | Cached input | Output / cost |',
+    '| --- | --- | --- | --- | --- |',
+    '| audio-only-model | Audio | $32.00 | $0.40 | $64.00 |',
+  ].join('\n')
+
+  const models = await openaiExtractor.extract({ fetchText: async () => md } as never)
+
+  // An audio rate published as a per-token headline price is exactly the
+  // wrong number this feature removes; absence beats substitution.
+  assert.ok(
+    !models.some((m) => m.modelId === 'audio-only-model'),
+    'no Text row means no headline per-token price, not the Audio price',
+  )
+})
+
+test('tables without a Modality column keep first-listing-wins (FR-005)', async () => {
+  const md = [
+    '## Flagship models',
+    '',
+    '| Model | Input | Output |',
+    '| --- | --- | --- |',
+    '| gpt-x | $5.00 | $30.00 |',
+    '',
+    '| Model | Input | Output |',
+    '| --- | --- | --- |',
+    '| gpt-x | $10.00 | $60.00 |',
+  ].join('\n')
+
+  const models = await openaiExtractor.extract({ fetchText: async () => md } as never)
+  assert.equal(models.length, 1)
+  assert.equal(models[0].pricing.inputPrice, 5, 'plain tables are untouched by 009')
+})
+
+test('the renamed "Output / cost" header is read as the output price', async () => {
+  const models = await openaiExtractor.extract({ fetchText: readFixture } as never)
+  const byId = new Map(models.map((m) => [m.modelId, m]))
+
+  // The grouped realtime/audio table heads its output column "Output / cost";
+  // the anchored ^output$ arm missed it, so 14 models published null output.
+  assert.equal(byId.get('gpt-realtime')?.pricing.outputPrice, 16)
+  assert.equal(byId.get('gpt-audio')?.pricing.outputPrice, 10)
+})
+
+test('a plain "Output" header still parses (pre-009 tables)', async () => {
+  const md = [
+    '## Flagship models',
+    '',
+    '| Model | Input | Output |',
+    '| --- | --- | --- |',
+    '| gpt-x | $5.00 | $30.00 |',
+  ].join('\n')
+
+  const [model] = await openaiExtractor.extract({ fetchText: async () => md } as never)
+  assert.equal(model.pricing.outputPrice, 30)
+})
+
+test('every modality row survives, parsed, in raw.modalities', async () => {
+  const models = await openaiExtractor.extract({ fetchText: readFixture } as never)
+  const raw = models.find((m) => m.modelId === 'gpt-realtime')?.pricing.raw as {
+    headlineModality?: string
+    modalities?: Array<{
+      modality: string
+      row: string[]
+      inputPrice: number | null
+      cachedInputPrice: number | null
+      outputPrice: number | null
+    }>
+  }
+
+  // The non-headline rates are real prices someone may need (audio-token
+  // billing, a future audio-pricing surface); discarding them was the loss
+  // this story reverses. Document order is preserved — it is presentation.
+  assert.equal(raw.headlineModality, 'text')
+  assert.deepEqual(
+    raw.modalities?.map((m) => [m.modality, m.inputPrice, m.outputPrice]),
+    [
+      ['audio', 32, 64],
+      ['text', 4, 16],
+      ['image', 5, null],
+    ],
+  )
+  assert.ok(
+    raw.modalities?.every((m) => Array.isArray(m.row) && m.row.length === 5),
+    'each entry carries its raw cells for audit',
+  )
+})
+
+test('non-modality tables keep the single-row raw shape', async () => {
+  const md = [
+    '## Flagship models',
+    '',
+    '| Model | Input | Output |',
+    '| --- | --- | --- |',
+    '| gpt-x | $5.00 | $30.00 |',
+  ].join('\n')
+
+  const [model] = await openaiExtractor.extract({ fetchText: async () => md } as never)
+  const raw = model.pricing.raw as { row?: string[]; modalities?: unknown }
+  assert.deepEqual(raw.row, ['gpt-x', '$5.00', '$30.00'])
+  assert.equal(raw.modalities, undefined)
+})

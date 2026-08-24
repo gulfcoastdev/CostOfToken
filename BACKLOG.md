@@ -250,6 +250,13 @@ worth doing when the surface it protects starts changing often.
 
 ## Operational hardening
 
+- [ ] **tts-1 / tts-1-hd store a per-character rate as a per-token price**
+      Their cells read "$15.00 / 1M characters" — the unit lives in the cell,
+      not the header, so `isTokenPricingTable` cannot see it and the value
+      enters as $15/1M tokens. Pre-existing before `009-openai-modality-pricing`
+      and deliberately left out of its scope (research.md D4); needs cell-level
+      unit detection or exclusion of per-character rows.
+
 - [ ] **Restate the price history corrupted between 2026-08-11 and 2026-08-15**
       Left deliberately undone by `006-truthful-price-trend`, which fixed the
       cause but not the record. During that window the OpenAI extractor read

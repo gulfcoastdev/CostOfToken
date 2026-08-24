@@ -60,7 +60,10 @@ export const openaiExtractor: Extractor = {
         /cach/i,
       )
       const shortCached = findColumn(table.headers, /short context.*cached input|^cached input$/i)
-      const shortOutput = findColumn(table.headers, /short context.*output|^output$/i)
+      // "Output / cost" is the grouped tables' name for the same column. The
+      // pattern stays anchored: a contains-match would admit per-minute and
+      // per-image output columns that are not per-token prices.
+      const shortOutput = findColumn(table.headers, /short context.*output|^output\s*(\/\s*cost)?$/i)
       const longInput = findColumnExcluding(table.headers, /long context.*input/i, /cach/i)
       const longCached = findColumn(table.headers, /long context.*cached input/i)
       const longOutput = findColumn(table.headers, /long context.*output/i)
@@ -68,6 +71,21 @@ export const openaiExtractor: Extractor = {
       if (shortInput < 0 && shortOutput < 0) continue
 
       const unitHint = table.headers.join(' ')
+
+      // Realtime/audio and image tables carry a Modality column — one row per
+      // modality per model, Audio listed first. Until 009 the first row won
+      // ("the numbers OpenAI leads with"), but that order proved to be
+      // presentation, not pricing: OpenAI flipped Audio/Text between
+      // 2026-08-22 and 2026-08-23 and 14 models recorded 8x–16.7x phantom
+      // changes against unchanged prices. The Text row is the headline — the
+      // only row priced in the unit the whole catalogue compares on — and the
+      // other rows are preserved in raw.modalities rather than discarded.
+      const modalityCol = findColumn(table.headers, /^\s*modality\s*$/i)
+      if (modalityCol >= 0) {
+        extractModalityTable(table, models, { modelCol, modalityCol, shortInput, shortCached, shortOutput, unitHint })
+        continue
+      }
+
       for (const row of table.rows) {
         const rawModel = cell(row, modelCol)
         if (!rawModel || looksLikeSectionRow(rawModel)) continue
@@ -134,6 +152,104 @@ export const openaiExtractor: Extractor = {
 
 
 
+
+/**
+ * Extract models from a table that has a Modality column.
+ *
+ * Each model spans one row per modality. The Text row supplies the headline
+ * prices; a model without a usable Text row is skipped entirely, because an
+ * audio or image rate published as the per-token headline is exactly the
+ * wrong number this path exists to prevent — absence beats substitution.
+ * Every modality row is kept, parsed, in raw.modalities so no scraped rate
+ * is lost.
+ */
+function extractModalityTable(
+  table: SourceTable,
+  models: Map<string, NormalizedModel>,
+  columns: {
+    modelCol: number
+    modalityCol: number
+    shortInput: number
+    shortCached: number
+    shortOutput: number
+    unitHint: string
+  },
+): void {
+  const { modelCol, modalityCol, shortInput, shortCached, shortOutput, unitHint } = columns
+
+  const groups = new Map<string, { threshold: number | null; rows: string[][] }>()
+  for (const row of table.rows) {
+    const rawModel = cell(row, modelCol)
+    if (!rawModel || looksLikeSectionRow(rawModel)) continue
+    const { modelId, threshold } = splitModelQualifier(rawModel)
+    if (!modelId) continue
+    const group = groups.get(modelId) ?? { threshold: null, rows: [] }
+    group.threshold ??= threshold
+    group.rows.push(row)
+    groups.set(modelId, group)
+  }
+
+  for (const [modelId, group] of groups) {
+    // Cross-table dedupe is unchanged: the first table naming a model wins.
+    if (models.has(modelId)) continue
+
+    const parseRow = (row: string[]) => ({
+      input: parsePricePerMillion(cell(row, shortInput), unitHint),
+      cached: parsePricePerMillion(cell(row, shortCached), unitHint),
+      output: parsePricePerMillion(cell(row, shortOutput), unitHint),
+    })
+
+    const textRow = group.rows.find((row) => /^text(\s+tokens?)?$/i.test(cell(row, modalityCol) ?? ''))
+    if (!textRow) continue
+
+    const { input, cached, output } = parseRow(textRow)
+    if (!input && !output) continue
+
+    models.set(modelId, {
+      providerSlug: 'openai',
+      modelId,
+      displayName: modelId,
+      contextWindow: null,
+      maxOutputTokens: null,
+      longContextThreshold: group.threshold,
+      description: null,
+      modality: inferModality(modelId, table.caption),
+      tags: inferTags(modelId, table.caption),
+      isActive: true,
+      pricing: {
+        inputPrice: input?.value ?? null,
+        cachedInputPrice: cached?.value ?? null,
+        outputPrice: output?.value ?? null,
+        longInputPrice: null,
+        longCachedInputPrice: null,
+        longOutputPrice: null,
+        currency: input?.currency ?? output?.currency ?? 'USD',
+        sourceUrl: PAGE_URL,
+        sourceKind: 'scrape',
+        raw: {
+          caption: table.caption,
+          labels: table.labels,
+          headers: table.headers,
+          // Which row supplied the headline, and every row the model spanned
+          // — parsed and raw — so the audio/image rates are recoverable
+          // instead of discarded. Document order is kept; it is presentation.
+          headlineModality: 'text',
+          modalities: group.rows.map((row) => {
+            const parsed = parseRow(row)
+            return {
+              modality: cell(row, modalityCol)?.toLowerCase() ?? '',
+              row,
+              inputPrice: parsed.input?.value ?? null,
+              cachedInputPrice: parsed.cached?.value ?? null,
+              outputPrice: parsed.output?.value ?? null,
+            }
+          }),
+          page: PAGE_URL,
+        },
+      },
+    })
+  }
+}
 
 /**
  * Separate a model id from its parenthetical qualifier.
