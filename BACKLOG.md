@@ -4,6 +4,29 @@ Working roadmap. Ordered by priority, not by effort.
 
 ---
 
+## Priority 0 — Cross-provider platform (spec 011, in progress)
+
+- [x] **Phases A–E: data model, resolver, OpenRouter adapter, comparison,
+      monitoring** — done. `models` rows are offers; `canonical_models`
+      identity sits above them (314 canonicals, 474 linked offers, 87%
+      auto-resolved, rest flagged). OpenRouter ingests as a router provider
+      (323 offers). `monitoring_events` records price_change / offer_added /
+      offer_removed / cheapest_flip per run. NOT YET DEPLOYED — prod needs
+      `npm run db:push -- --remote` before this code ships.
+- [ ] **Phase C2+: remaining adapters** — Together, Fireworks, Groq,
+      DeepInfra, Cerebras, Mistral, Cohere (source research each), then
+      Azure/Bedrock/Vertex as curated catalog sources with region qualifiers.
+- [ ] **Phase F: alert engine** — watchlist subscriptions (schema exists),
+      event fan-out, weekly digest, unsubscribe route.
+- [ ] **Phase G: public API** — additive canonical/offers fields + new
+      endpoints; /api/v1 stays byte-compatible.
+- [ ] **Phase H: web app** — canonical model pages with offer tables,
+      cheapest callout, calculator over offers, watch UI. Last by mandate.
+- [ ] **Resolver review flow** — 71 unlinked long-tail offers (aion-labs,
+      ibm-granite, bytedance-seed, …); extend VENDOR_PREFIXES or add
+      aliases after human review; consider a `resolve:review` script like
+      classify:review.
+
 ## Priority 1 — Foundation & high-value wins
 
 - [x] **Fix reliability issues (timeouts / caching)** — done in `bd8517e`.

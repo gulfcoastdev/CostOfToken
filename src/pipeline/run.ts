@@ -1,12 +1,21 @@
 import { randomUUID } from 'node:crypto'
 import type { NormalizedModel } from '@/lib/types.ts'
 import { type Anomaly, detectAnomalies, hasBlocking } from './anomaly.ts'
+import { arbitrate, createOpenAIJudge, diffChanges, PAGE_TEXT_CHARS, type Judge } from './arbiter.ts'
 import { enrichModels } from './enrich.ts'
 import { getExtractors } from './extractors/index.ts'
 import { resetOpenRouterCache } from './extractors/openrouter.ts'
 import type { ExtractorContext } from './extractors/types.ts'
 import { fetchText } from './http.ts'
 import { validateModel } from './normalize.ts'
+import {
+  canonicalIdsForProvider,
+  cheapestByCanonical,
+  detectCheapestFlips,
+  detectOfferEvents,
+  recordMonitoringEvents,
+} from './monitor.ts'
+import { resolveProviderOffers } from './resolve.ts'
 import {
   deactivateMissingModels,
   ensureProviders,
@@ -26,6 +35,10 @@ export interface ProviderResult {
   error?: string
   rejections?: string[]
   anomalies?: Anomaly[]
+  /** 011: canonical-identity linking outcome for this provider's offers. */
+  resolution?: { linked: number; unresolved: number }
+  /** 011: monitoring events written for this provider this run. */
+  eventsRecorded?: number
 }
 
 export interface RunSummary {
@@ -54,6 +67,12 @@ export interface RunOptions {
    * genuinely real — a vendor really did halve its prices.
    */
   force?: boolean
+  /**
+   * Builds the arbiter's judge (010). Injected for tests; production uses
+   * createOpenAIJudge, which returns null without an OPENAI_API_KEY so
+   * the feature is simply off.
+   */
+  judgeFactory?: () => Judge | null
 }
 
 const defaultContext: ExtractorContext = {
@@ -70,7 +89,14 @@ const defaultContext: ExtractorContext = {
  * provider writes no rows at all.
  */
 export async function runPipeline(options: RunOptions = {}): Promise<RunSummary> {
-  const { only, dryRun = false, ctx = defaultContext, force = false } = options
+  const {
+    only,
+    dryRun = false,
+    ctx = defaultContext,
+    force = false,
+    judgeFactory = createOpenAIJudge,
+  } = options
+  const judge = judgeFactory()
 
   const runId = randomUUID()
   const startedAt = new Date()
@@ -94,8 +120,20 @@ export async function runPipeline(options: RunOptions = {}): Promise<RunSummary>
       durationMs: 0,
     }
 
+    // Remember the last body this extractor fetched (bounded) so the arbiter
+    // can see the page the parser read, without re-fetching or persisting it.
+    // Extraction only — enrichment fetches other pages and must not clobber it.
+    let lastFetched = ''
+    const rememberingCtx: ExtractorContext = {
+      fetchText: async (url, init) => {
+        const text = await ctx.fetchText(url, init)
+        lastFetched = text.slice(0, PAGE_TEXT_CHARS)
+        return text
+      },
+    }
+
     try {
-      const raw = await extractor.extract(ctx)
+      const raw = await extractor.extract(rememberingCtx)
 
       if (raw.length === 0) {
         // An empty result is indistinguishable from a layout change that broke
@@ -142,12 +180,71 @@ export async function runPipeline(options: RunOptions = {}): Promise<RunSummary>
             .map((a) => a.message)
             .join(' ')
         } else {
-          const { pricesChanged } = await upsertProviderModels(providerId, valid)
+          // 010: judge the changes this write would make before making it.
+          // Verdicts arrive as anomalies (rendered by the existing alert);
+          // held models keep their stored prices via the upsert filter. An
+          // unavailable arbiter degrades to a note — never to a failed run.
+          const changes = diffChanges(baseline, valid)
+          let holds: ReadonlySet<string> = new Set<string>()
+          if (changes.length > 0) {
+            const outcome = await arbitrate(changes, judge, lastFetched || null)
+            holds = outcome.holds
+            if (outcome.anomalies.length > 0) {
+              base.anomalies = [...(base.anomalies ?? []), ...outcome.anomalies]
+            }
+          }
+
+          // 011: capture cheapest-per-canonical before the write, so a flip
+          // can be detected against it afterwards. Monitoring must never
+          // fail a run that produced good prices.
+          let cheapestBefore: Awaited<ReturnType<typeof cheapestByCanonical>> = []
+          try {
+            cheapestBefore = await cheapestByCanonical(await canonicalIdsForProvider(providerId))
+          } catch {
+            // Flip detection is skipped this run; offer events still record.
+          }
+
+          const { pricesChanged } = await upsertProviderModels(providerId, valid, holds)
           base.modelsChanged = pricesChanged
           await deactivateMissingModels(
             providerId,
             valid.map((m) => m.modelId),
           )
+
+          // 011: link this provider's offers to canonical models. Also the
+          // backfill — pre-011 rows are just offers never linked. Resolution
+          // failure must not fail a run that produced good prices.
+          try {
+            base.resolution = await resolveProviderOffers(providerId)
+          } catch {
+            // Reported by the unresolved-offers report, not by failing the run.
+          }
+
+          // 011: durable monitoring events — offer add/remove/change plus
+          // cheapest-provider flips across this provider's canonicals.
+          try {
+            const offerEvents = detectOfferEvents(
+              baseline,
+              valid.map((m) => ({
+                modelId: m.modelId,
+                inputPrice: m.pricing.inputPrice,
+                cachedInputPrice: m.pricing.cachedInputPrice,
+                outputPrice: m.pricing.outputPrice,
+              })),
+              holds,
+            )
+            const cheapestAfter = await cheapestByCanonical(
+              await canonicalIdsForProvider(providerId),
+            )
+            const flips = detectCheapestFlips(cheapestBefore, cheapestAfter)
+            base.eventsRecorded = await recordMonitoringEvents(runId, providerId, [
+              ...offerEvents,
+              ...flips,
+            ])
+          } catch {
+            // A lost event is recoverable from history; a failed run is worse.
+          }
+
           base.status = rejections.length > 0 ? 'partial' : 'ok'
         }
       } else {

@@ -139,6 +139,19 @@ export interface NormalizedModel {
   description: string | null
   tags: string[]
   isActive: boolean
+  /**
+   * 011 offer qualifiers. An offer is one provider selling one model; the
+   * tier/region qualify it (standard-tier, unqualified-region offers are the
+   * comparison basis). Optional so existing extractors change nothing.
+   */
+  offerTier?: string
+  offerRegion?: string | null
+  /**
+   * Adapter's canonical-identity hint (e.g. a router that publishes the
+   * upstream id). The resolver verifies hints with the same rules as
+   * anything else — a hint is evidence, not authority.
+   */
+  canonicalHint?: string | null
   pricing: NormalizedPricing
   /** Assigned by the classifier; null type means not yet determined. */
   classification?: Classification
@@ -152,7 +165,12 @@ export interface ProviderDefinition {
   website: string
   pricingUrl: string
   region: 'global' | 'cn'
+  /** What kind of seller this is. Omitted = 'vendor' (all pre-011 rows). */
+  providerType?: ProviderType
 }
+
+/** 011: sellers come in three kinds; comparisons label offers by it. */
+export type ProviderType = 'vendor' | 'cloud' | 'router'
 
 /** Public API row shape (v1). Keys are snake_case per the spec's example payload. */
 export interface PriceRowV1 {

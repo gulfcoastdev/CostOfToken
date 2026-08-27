@@ -92,6 +92,18 @@ export const PROVIDERS: readonly ProviderDefinition[] = [
     pricingUrl: 'https://cloud.baidu.com/product-price/qianfan.html',
     region: 'cn',
   },
+
+  // --- Routers / inference hosts (011) ------------------------------------
+  {
+    // A reseller, not a vendor: its catalogue prices are what OpenRouter
+    // customers pay, listed as offers beside vendors' direct prices.
+    slug: 'openrouter',
+    name: 'OpenRouter',
+    website: 'https://openrouter.ai',
+    pricingUrl: 'https://openrouter.ai/models',
+    region: 'global',
+    providerType: 'router',
+  },
 ] as const
 
 export const PROVIDER_BY_SLUG = new Map(PROVIDERS.map((p) => [p.slug, p]))

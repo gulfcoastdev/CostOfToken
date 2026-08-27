@@ -30,6 +30,10 @@ export type AnomalyCode =
   | 'unsettled_price'
   | 'mass_price_change'
   | 'field_collapse'
+  // 010: emitted by the LLM arbiter, not by detectAnomalies — sharing the
+  // Anomaly shape is what lets verdicts ride the existing alert and run log.
+  | 'arbiter_hold'
+  | 'arbiter_note'
 
 export type AnomalySeverity = 'warn' | 'block'
 

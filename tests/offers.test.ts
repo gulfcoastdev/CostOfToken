@@ -1,0 +1,111 @@
+import assert from 'node:assert/strict'
+import { test } from 'node:test'
+import { cheapestOffer, rankOffers, type Offer } from '../src/lib/offers.ts'
+
+// ---------------------------------------------------------------------------
+// 011: comparison engine. The cheapest *equivalent* offer — standard tier,
+// compared only on fields an offer actually publishes. A missing number is
+// never treated as zero (that would crown an offer cheapest for hiding its
+// price).
+// ---------------------------------------------------------------------------
+
+function offer(partial: Partial<Offer> & { providerSlug: string }): Offer {
+  return {
+    providerSlug: partial.providerSlug,
+    providerName: partial.providerName ?? partial.providerSlug,
+    providerType: partial.providerType ?? 'vendor',
+    modelId: partial.modelId ?? 'm',
+    displayName: partial.displayName ?? 'm',
+    offerTier: partial.offerTier ?? 'standard',
+    offerRegion: partial.offerRegion ?? null,
+    inputPrice: partial.inputPrice ?? null,
+    outputPrice: partial.outputPrice ?? null,
+    cachedInputPrice: partial.cachedInputPrice ?? null,
+  }
+}
+
+const WORKLOAD = { inputTokens: 1_000_000, outputTokens: 1_000_000 }
+
+test('the cheapest standard-tier offer wins on workload cost', () => {
+  const offers = [
+    offer({ providerSlug: 'vendor', inputPrice: 4, outputPrice: 16 }),
+    offer({ providerSlug: 'router', providerType: 'router', inputPrice: 2, outputPrice: 8 }),
+    offer({ providerSlug: 'cloud', providerType: 'cloud', inputPrice: 5, outputPrice: 20 }),
+  ]
+
+  const cheapest = cheapestOffer(offers, WORKLOAD)
+  assert.equal(cheapest?.offer.providerSlug, 'router')
+  assert.equal(cheapest?.cost, 10) // 2 + 8 for 1M in / 1M out
+})
+
+test('non-standard tiers never compete for cheapest', () => {
+  const offers = [
+    offer({ providerSlug: 'vendor', inputPrice: 4, outputPrice: 16 }),
+    offer({ providerSlug: 'batchy', offerTier: 'batch', inputPrice: 1, outputPrice: 4 }),
+  ]
+  assert.equal(cheapestOffer(offers, WORKLOAD)?.offer.providerSlug, 'vendor')
+})
+
+test('an offer missing a needed price is ranked apart, never as free', () => {
+  const offers = [
+    offer({ providerSlug: 'complete', inputPrice: 4, outputPrice: 16 }),
+    offer({ providerSlug: 'no-output', inputPrice: 0.1, outputPrice: null }),
+  ]
+
+  const ranked = rankOffers(offers, WORKLOAD)
+  assert.equal(ranked.priced[0].offer.providerSlug, 'complete')
+  assert.deepEqual(
+    ranked.unpriced.map((o) => o.providerSlug),
+    ['no-output'],
+  )
+  assert.equal(cheapestOffer(offers, WORKLOAD)?.offer.providerSlug, 'complete')
+})
+
+test('zero is a real price and can win', () => {
+  const offers = [
+    offer({ providerSlug: 'vendor', inputPrice: 4, outputPrice: 16 }),
+    offer({ providerSlug: 'free-host', inputPrice: 0, outputPrice: 0 }),
+  ]
+  const cheapest = cheapestOffer(offers, WORKLOAD)
+  assert.equal(cheapest?.offer.providerSlug, 'free-host')
+  assert.equal(cheapest?.cost, 0)
+})
+
+test('a single offer is trivially cheapest (degenerate pre-011 case)', () => {
+  const only = [offer({ providerSlug: 'vendor', inputPrice: 4, outputPrice: 16 })]
+  assert.equal(cheapestOffer(only, WORKLOAD)?.offer.providerSlug, 'vendor')
+})
+
+test('no priceable offers means no cheapest, not a fabricated one', () => {
+  const offers = [offer({ providerSlug: 'a', inputPrice: null, outputPrice: null })]
+  assert.equal(cheapestOffer(offers, WORKLOAD), null)
+})
+
+test('savings against the vendor-direct offer are reported', () => {
+  const offers = [
+    offer({ providerSlug: 'vendor', providerType: 'vendor', inputPrice: 4, outputPrice: 16 }),
+    offer({ providerSlug: 'router', providerType: 'router', inputPrice: 2, outputPrice: 8 }),
+  ]
+  const ranked = rankOffers(offers, WORKLOAD)
+  // Vendor pays 20, router 10 → 50% saving vs going direct.
+  assert.equal(ranked.vendorDirectCost, 20)
+  assert.equal(ranked.priced[0].savingsVsVendor, 0.5)
+})
+
+test('equal-cost offers rank deterministically: vendor first, then slug', () => {
+  const offers = [
+    offer({ providerSlug: 'zrouter', providerType: 'router', inputPrice: 4, outputPrice: 16 }),
+    offer({ providerSlug: 'vendor', providerType: 'vendor', inputPrice: 4, outputPrice: 16 }),
+    offer({ providerSlug: 'arouter', providerType: 'router', inputPrice: 4, outputPrice: 16 }),
+  ]
+
+  // A tie must not flap between runs — 59 phantom cheapest_flip events came
+  // from exactly this: same prices, undefined SQL row order. The vendor wins
+  // ties (switching sellers for $0.00 savings is not a recommendation), and
+  // remaining ties order by slug.
+  const ranked = rankOffers(offers, WORKLOAD)
+  assert.deepEqual(
+    ranked.priced.map((p) => p.offer.providerSlug),
+    ['vendor', 'arouter', 'zrouter'],
+  )
+})

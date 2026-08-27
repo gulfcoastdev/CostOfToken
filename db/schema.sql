@@ -351,3 +351,77 @@ alter table price_history   enable row level security;
 alter table api_keys        enable row level security;
 alter table api_rate_limits enable row level security;
 alter table extraction_runs enable row level security;
+
+-- ---------------------------------------------------------------------------
+-- 011: cross-provider platform — canonical identity above offers.
+--
+-- A `models` row already is an offer: one provider selling one model with
+-- one price row and its own history. The platform therefore adds identity
+-- *above* the existing tables instead of rewriting them — price_history
+-- keys, /api/v1 and the whole pipeline survive unchanged.
+-- ---------------------------------------------------------------------------
+
+-- What kind of seller a provider is. Existing rows are all first-party
+-- vendors; clouds (Bedrock/Vertex/Azure) and routers (OpenRouter, Together,
+-- Groq, ...) arrive with their adapters.
+alter table providers add column if not exists provider_type text not null default 'vendor';
+alter table providers drop constraint if exists providers_provider_type_check;
+alter table providers add constraint providers_provider_type_check
+  check (provider_type in ('vendor', 'cloud', 'router'));
+
+-- The identity users follow. Slug is public and immutable once created
+-- (Principle VI: identifiers live for the life of the thing they name).
+create table if not exists canonical_models (
+  id           uuid primary key default gen_random_uuid(),
+  slug         text not null unique,
+  display_name text not null,
+  family       text,
+  model_type   text,
+  created_at   timestamptz not null default now()
+);
+
+-- Offers: identity link + qualifiers. Nullable by default so every existing
+-- row is valid before the backfill; an offer the resolver cannot confidently
+-- match stays unlinked and flagged — never force-merged (a wrong merge
+-- poisons every comparison built on it).
+alter table models add column if not exists canonical_model_id uuid references canonical_models(id);
+alter table models add column if not exists resolution_source text
+  check (resolution_source is null or resolution_source in ('rule', 'alias', 'manual'));
+alter table models add column if not exists resolution_note text;
+alter table models add column if not exists offer_tier text not null default 'standard';
+alter table models add column if not exists offer_region text;
+
+create index if not exists models_canonical_idx on models (canonical_model_id) where is_active;
+
+-- Durable per-run detections; the alert engine's queue and the feed's source.
+create table if not exists monitoring_events (
+  id                 bigserial primary key,
+  run_id             uuid not null,
+  kind               text not null check (kind in
+                       ('price_change', 'offer_added', 'offer_removed', 'cheapest_flip')),
+  canonical_model_id uuid references canonical_models(id),
+  model_id           uuid references models(id) on delete set null,
+  details            jsonb not null default '{}'::jsonb,
+  recorded_at        timestamptz not null default now()
+);
+
+create index if not exists monitoring_events_canonical_time_idx
+  on monitoring_events (canonical_model_id, recorded_at desc);
+create index if not exists monitoring_events_run_idx on monitoring_events (run_id);
+
+-- Email-based follows (v1, no accounts). The unsubscribe token is stored
+-- hashed; the plaintext exists only inside the email we send.
+create table if not exists watchlist_subscriptions (
+  id                 uuid primary key default gen_random_uuid(),
+  email              text not null,
+  canonical_model_id uuid not null references canonical_models(id) on delete cascade,
+  unsubscribe_hash   text not null,
+  created_at         timestamptz not null default now(),
+  unique (email, canonical_model_id)
+);
+
+create index if not exists watchlist_canonical_idx on watchlist_subscriptions (canonical_model_id);
+
+alter table canonical_models        enable row level security;
+alter table monitoring_events       enable row level security;
+alter table watchlist_subscriptions enable row level security;

@@ -21,13 +21,15 @@ export async function ensureProviders(): Promise<Map<string, string>> {
         website: p.website,
         pricing_url: p.pricingUrl,
         region: p.region,
+        provider_type: p.providerType ?? 'vendor',
       })),
     )}
     on conflict (slug) do update set
-      name        = excluded.name,
-      website     = excluded.website,
-      pricing_url = excluded.pricing_url,
-      region      = excluded.region
+      name          = excluded.name,
+      website       = excluded.website,
+      pricing_url   = excluded.pricing_url,
+      region        = excluded.region,
+      provider_type = excluded.provider_type
     returning id, slug
   `
   return new Map(rows.map((r) => [r.slug, r.id]))
@@ -64,10 +66,17 @@ export interface UpsertResult {
 /**
  * Upsert one provider's models and prices inside a single transaction, so a
  * provider is never left half-written.
+ *
+ * `holdPrices` (010): model ids whose price change the arbiter judged a
+ * parser misread. Held models skip only the `prices` write — every stored
+ * price field survives untouched and no history row fires — while their
+ * model-row metadata still refreshes. Holding by *not writing* is what keeps
+ * the arbiter unable to author a number.
  */
 export async function upsertProviderModels(
   providerId: string,
   models: NormalizedModel[],
+  holdPrices?: ReadonlySet<string>,
 ): Promise<UpsertResult> {
   if (models.length === 0) return { modelsWritten: 0, pricesChanged: 0 }
 
@@ -86,6 +95,8 @@ export async function upsertProviderModels(
           modality: m.modality,
           tags: m.tags,
           is_active: m.isActive,
+          offer_tier: m.offerTier ?? 'standard',
+          offer_region: m.offerRegion ?? null,
           model_type: m.classification?.modelType ?? null,
           classification_status: m.classification?.status ?? 'needs_review',
           classification_source: m.classification?.source ?? null,
@@ -108,6 +119,8 @@ export async function upsertProviderModels(
         modality               = excluded.modality,
         tags                   = excluded.tags,
         is_active              = excluded.is_active,
+        offer_tier             = excluded.offer_tier,
+        offer_region           = excluded.offer_region,
         -- A human decision outranks anything the rules produce. Without these
         -- guards a nightly run would quietly undo the review work that the
         -- classifier's refusal to guess made necessary in the first place.
@@ -145,6 +158,7 @@ export async function upsertProviderModels(
 
     const priceRows = models
       .map((m) => {
+        if (holdPrices?.has(m.modelId)) return null
         const uuid = idByModelId.get(m.modelId)
         if (!uuid) return null
         return {

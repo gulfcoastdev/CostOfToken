@@ -121,6 +121,72 @@ export function createOpenRouterExtractor(providerSlug: string, vendors: string[
 }
 
 /**
+ * 011: OpenRouter as a provider in its own right (router type).
+ *
+ * The factory above borrows OpenRouter's catalogue to price a *vendor*; this
+ * extractor ingests the whole catalogue as OpenRouter's own offers — the
+ * price a router customer actually pays, listed beside the vendor's direct
+ * offer under the same canonical model. Model ids stay in OpenRouter's full
+ * form ("deepseek/deepseek-v4-pro") because that is the id its customers
+ * use; the resolver, not the adapter, links them to canonical identities.
+ */
+export function createOpenRouterProviderExtractor(): Extractor {
+  return {
+    providerSlug: 'openrouter',
+    sourceKind: 'api',
+    sourceUrl: SOURCE_URL,
+
+    async extract(ctx): Promise<NormalizedModel[]> {
+      const all = await loadCatalogue(ctx)
+      const models = new Map<string, NormalizedModel>()
+
+      for (const entry of all) {
+        if (!entry.id) continue
+        // Floating "latest" aliases repoint silently; a row that changes
+        // identity under a stable id would corrupt its price history.
+        if (entry.id.startsWith('~')) continue
+        if (isRoutingTier(entry.id)) continue
+
+        const input = perTokenToPerMillion(entry.pricing?.prompt)
+        const output = perTokenToPerMillion(entry.pricing?.completion)
+        if (input === null && output === null) continue
+
+        const modality = toModalities(entry.architecture)
+        const tags = new Set(inferTags(entry.id, entry.name))
+        if (modality.includes('vision')) tags.add('vision')
+
+        models.set(entry.id, {
+          providerSlug: 'openrouter',
+          modelId: entry.id,
+          displayName: entry.name || entry.id,
+          description: cleanDescription(entry.description),
+          contextWindow: entry.context_length ?? null,
+          maxOutputTokens: entry.top_provider?.max_completion_tokens ?? null,
+          longContextThreshold: null,
+          modality,
+          tags: [...tags].sort(),
+          isActive: true,
+          pricing: {
+            inputPrice: input,
+            cachedInputPrice: perTokenToPerMillion(entry.pricing?.input_cache_read),
+            outputPrice: output,
+            longInputPrice: null,
+            longCachedInputPrice: null,
+            longOutputPrice: null,
+            currency: 'USD',
+            sourceUrl: SOURCE_URL,
+            sourceKind: 'api',
+            raw: entry,
+          },
+        })
+      }
+
+      return [...models.values()]
+    },
+  }
+}
+
+/**
  * Routing tiers, which OpenRouter marks with a suffix on the model id.
  *
  * These are not separate models — they are the same model billed under a

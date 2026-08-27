@@ -654,3 +654,48 @@ test('non-modality tables keep the single-row raw shape', async () => {
   assert.deepEqual(raw.row, ['gpt-x', '$5.00', '$30.00'])
   assert.equal(raw.modalities, undefined)
 })
+
+// ---------------------------------------------------------------------------
+// 011: OpenRouter as a provider in its own right (router type). Every
+// catalogue listing becomes an offer attributed to OpenRouter — the price a
+// router customer actually pays, beside the vendor's own offer.
+// ---------------------------------------------------------------------------
+
+test('the openrouter provider extractor ingests the whole catalogue as offers', async () => {
+  const { createOpenRouterProviderExtractor } = await import(
+    '../src/pipeline/extractors/openrouter.ts'
+  )
+  resetOpenRouterCache()
+
+  const catalogue = {
+    data: [
+      {
+        id: 'deepseek/deepseek-v4-pro',
+        name: 'DeepSeek: DeepSeek V4 Pro',
+        pricing: { prompt: '0.0000004', completion: '0.0000008' },
+      },
+      {
+        id: 'meta-llama/llama-3.3-70b-instruct',
+        name: 'Meta: Llama 3.3 70B Instruct',
+        pricing: { prompt: '0.0000001', completion: '0.0000002' },
+      },
+      // Routing tiers are billing routes, not models — still excluded.
+      { id: 'deepseek/deepseek-v4-pro:free', pricing: { prompt: '0', completion: '0' } },
+      { id: 'deepseek/deepseek-v4-pro:batch', pricing: { prompt: '0.0000002', completion: '0.0000004' } },
+    ],
+  }
+
+  const extractor = createOpenRouterProviderExtractor()
+  const models = await extractor.extract({ fetchText: async () => JSON.stringify(catalogue) })
+
+  assert.equal(extractor.providerSlug, 'openrouter')
+  const ids = models.map((m) => m.modelId).sort()
+  // Full OpenRouter ids are the offer's model id — that is what an
+  // OpenRouter customer types; identity linking is the resolver's job.
+  assert.deepEqual(ids, ['deepseek/deepseek-v4-pro', 'meta-llama/llama-3.3-70b-instruct'])
+
+  const deepseek = models.find((m) => m.modelId === 'deepseek/deepseek-v4-pro')!
+  assert.equal(deepseek.pricing.inputPrice, 0.4)
+  assert.equal(deepseek.pricing.outputPrice, 0.8)
+  assert.equal(deepseek.pricing.sourceKind, 'api')
+})
