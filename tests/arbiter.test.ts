@@ -416,7 +416,7 @@ test('no judge (no API key) writes everything and says so', async () => {
 
   assert.equal(outcome.holds.size, 0)
   assert.equal(outcome.anomalies.length, 1)
-  assert.match(outcome.anomalies[0].message, /arbiter unavailable.*OPENAI_API_KEY/)
+  assert.match(outcome.anomalies[0].message, /arbiter unavailable.*OPEN_ROUTER_API_KEY/)
 })
 
 test('a throwing judge degrades to write-everything plus a note', async () => {
@@ -466,13 +466,13 @@ test('an oversized change set judges the first MAX_JUDGED and notes the rest', a
   )
 })
 
-test('createOpenAIJudge is off without an API key', async () => {
-  const { createOpenAIJudge } = await import('../src/pipeline/arbiter.ts')
-  const saved = process.env.OPENAI_API_KEY
-  delete process.env.OPENAI_API_KEY
+test('createOpenRouterJudge is off without an API key', async () => {
+  const { createOpenRouterJudge } = await import('../src/pipeline/arbiter.ts')
+  const saved = process.env.OPEN_ROUTER_API_KEY
+  delete process.env.OPEN_ROUTER_API_KEY
   try {
-    assert.equal(createOpenAIJudge(), null)
+    assert.equal(createOpenRouterJudge(), null)
   } finally {
-    if (saved !== undefined) process.env.OPENAI_API_KEY = saved
+    if (saved !== undefined) process.env.OPEN_ROUTER_API_KEY = saved
   }
 })

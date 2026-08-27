@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { hasJudgeKey, openrouterChat } from './llm.ts'
 import type { NormalizedModel } from '@/lib/types.ts'
 import type { Anomaly, BaselineModel } from './anomaly.ts'
 
@@ -155,7 +156,7 @@ export async function arbitrate(
       holds: new Set(),
       anomalies: [
         note(
-          `arbiter unavailable (no OPENAI_API_KEY); ${changes.length} change(s) written unjudged`,
+          `arbiter unavailable (no OPEN_ROUTER_API_KEY); ${changes.length} change(s) written unjudged`,
         ),
       ],
     }
@@ -264,90 +265,43 @@ const VERDICT_SCHEMA = z.object({
   ),
 })
 
-/** The wire shape the response format below asks OpenAI to produce. */
-const RESPONSE_JSON_SCHEMA = {
-  type: 'json_schema',
-  json_schema: {
-    name: 'price_change_verdicts',
-    strict: true,
-    schema: {
-      type: 'object',
-      properties: {
-        verdicts: {
-          type: 'array',
-          items: {
-            type: 'object',
-            properties: {
-              modelId: { type: 'string' },
-              verdict: { type: 'string', enum: ['real', 'misread', 'unclear'] },
-              reason: { type: 'string' },
-              confidence: { type: 'string', enum: ['high', 'low'] },
-            },
-            required: ['modelId', 'verdict', 'reason', 'confidence'],
-            additionalProperties: false,
+const VERDICT_WIRE_SCHEMA = {
+  name: 'price_change_verdicts',
+  schema: {
+    type: 'object',
+    properties: {
+      verdicts: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            modelId: { type: 'string' },
+            verdict: { type: 'string', enum: ['real', 'misread', 'unclear'] },
+            reason: { type: 'string' },
+            confidence: { type: 'string', enum: ['high', 'low'] },
           },
+          required: ['modelId', 'verdict', 'reason', 'confidence'],
+          additionalProperties: false,
         },
       },
-      required: ['verdicts'],
-      additionalProperties: false,
     },
+    required: ['verdicts'],
+    additionalProperties: false,
   },
 } as const
 
-/** Operator's choice of judging model; one place to change it. */
-const OPENAI_MODEL = 'gpt-5.5'
-
 /**
- * The one place that talks to the API. Returns null when unconfigured so the
- * whole feature is off (today's behaviour) without a key.
- *
- * A plain fetch, like the Resend alert sender: one JSON POST with a strict
- * response schema, validated again locally with zod before anything acts on
- * it. One retry on retryable failures (429/5xx/network); a 4xx is a
- * configuration problem a retry cannot fix.
+ * The arbiter's judge over the shared OpenRouter client (llm.ts — DeepSeek
+ * by default). Returns null when unconfigured so the whole feature is off
+ * (today's behaviour) without a key.
  */
-export function createOpenAIJudge(): Judge | null {
-  const apiKey = process.env.OPENAI_API_KEY
-  if (!apiKey) return null
-
-  const call = async (systemPrompt: string, payload: string): Promise<Response> =>
-    fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: { authorization: `Bearer ${apiKey}`, 'content-type': 'application/json' },
-      // 60s + one retry keeps the worst case well inside the platform
-      // duration ceiling even with three changed providers in one run.
-      signal: AbortSignal.timeout(60_000),
-      body: JSON.stringify({
-        model: OPENAI_MODEL,
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: payload },
-        ],
-        response_format: RESPONSE_JSON_SCHEMA,
-      }),
-    })
+export function createOpenRouterJudge(): Judge | null {
+  if (!hasJudgeKey()) return null
 
   return async (systemPrompt, payload) => {
-    let response: Response
-    try {
-      response = await call(systemPrompt, payload)
-      if (response.status === 429 || response.status >= 500) {
-        response = await call(systemPrompt, payload)
-      }
-    } catch {
-      // Timeout or network failure; the retry is the single second attempt.
-      response = await call(systemPrompt, payload)
-    }
-
-    if (!response.ok) throw new Error(`openai returned ${response.status}`)
-
-    const body = (await response.json()) as {
-      choices?: Array<{ message?: { content?: string | null; refusal?: string | null } }>
-    }
-    const content = body.choices?.[0]?.message?.content
-    if (!content) return null
-
-    const parsed = VERDICT_SCHEMA.safeParse(JSON.parse(content))
+    const raw = await openrouterChat(systemPrompt, payload, VERDICT_WIRE_SCHEMA)
+    if (raw === null) return null
+    const parsed = VERDICT_SCHEMA.safeParse(raw)
     return parsed.success ? parsed.data.verdicts : null
   }
 }

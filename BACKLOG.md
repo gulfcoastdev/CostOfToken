@@ -22,6 +22,22 @@ Working roadmap. Ordered by priority, not by effort.
       endpoints; /api/v1 stays byte-compatible.
 - [ ] **Phase H: web app** — canonical model pages with offer tables,
       cheapest callout, calculator over offers, watch UI. Last by mandate.
+- [x] **LLM source-recovery judge (spec 012)** — done, not yet deployed.
+      Parser fails → DeepSeek derives prices from the fetched page (written
+      with `llm` provenance through the full anomaly gates, never
+      deactivating underived models), remembers the source structure in
+      `source_structures`, and files a deduped GitHub `source-rework` issue
+      (GITHUB_TOKEN) or notes it in the alert. Healthy runs cost zero LLM
+      calls. *Self-driving next steps (research.md D7):* judge-authored
+      parser-fix PRs attached to the issue; auto-close on parser success;
+      drift prediction from healthy-run memos.
+- [ ] **GitHub issue filing for source rework** — deferred by operator
+      ("let's do email instead"). `createGitHubPoster` in
+      src/pipeline/github.ts is built and tested but unwired; rework
+      notices currently email the alert address. To enable: wire the
+      GitHub poster (or chain email + issue), add a fine-grained
+      GITHUB_TOKEN (Issues: read/write on this repo) + optional
+      GITHUB_REPO to Vercel, and restore the two vars in .env.example.
 - [ ] **Resolver review flow** — 71 unlinked long-tail offers (aion-labs,
       ibm-granite, bytedance-seed, …); extend VENDOR_PREFIXES or add
       aliases after human review; consider a `resolve:review` script like

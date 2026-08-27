@@ -425,3 +425,28 @@ create index if not exists watchlist_canonical_idx on watchlist_subscriptions (c
 alter table canonical_models        enable row level security;
 alter table monitoring_events       enable row level security;
 alter table watchlist_subscriptions enable row level security;
+
+-- ---------------------------------------------------------------------------
+-- 012: LLM source recovery — structure memory and LLM provenance.
+-- ---------------------------------------------------------------------------
+
+-- Per-provider memory of what the source looks like, written only when a
+-- recovery runs (healthy runs never touch it). last_notified_at drives the
+-- 7-day rework-issue dedup window.
+create table if not exists source_structures (
+  provider_slug    text primary key,
+  structure        text not null,
+  change_account   text,
+  updated_at       timestamptz not null default now(),
+  last_notified_at timestamptz
+);
+
+alter table source_structures enable row level security;
+
+-- 'llm' is a first-class provenance: a price the recovery judge derived
+-- from the fetched page when the parser failed. Visibly distinct from a
+-- parse everywhere source kinds appear — the least-trusted source must be
+-- the most clearly labelled one.
+alter table prices drop constraint if exists prices_source_kind_check;
+alter table prices add constraint prices_source_kind_check
+  check (source_kind in ('scrape', 'api', 'catalog', 'llm'));

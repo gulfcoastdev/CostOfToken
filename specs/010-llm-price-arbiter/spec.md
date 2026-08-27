@@ -189,3 +189,9 @@ failing LLM stub; both must produce today's behaviour plus the note.
   reason. A `misread`, `unclear`, or low-confidence `real` verdict holds the
   stored price and reports why. FR-002/FR-003 are amended accordingly; all
   failure-mode rules (FR-004) are unchanged.
+- **2026-08-28: judge calls go through OpenRouter** ("I want to use
+  Open_ROUTER_API"): endpoint is OpenRouter's OpenAI-compatible chat
+  completions, gated on `OPEN_ROUTER_API_KEY`; the judge model is
+  `ARBITER_MODEL` (OpenRouter id form, default `openai/gpt-5.5`). Verified
+  live: a seeded price deviation was judged `real` with the evidence row
+  quoted, and applied.

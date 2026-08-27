@@ -3,7 +3,7 @@
 export type Modality = 'text' | 'vision' | 'audio' | 'video' | 'image'
 
 /** How a price row was obtained. Surfaced in the API so callers can judge freshness. */
-export type SourceKind = 'scrape' | 'api' | 'catalog'
+export type SourceKind = 'scrape' | 'api' | 'catalog' | 'llm'
 
 /**
  * What kind of thing a model is.
@@ -98,7 +98,7 @@ export interface Capabilities {
   features?: string[]
 }
 
-export const SOURCE_KINDS: readonly SourceKind[] = ['scrape', 'api', 'catalog']
+export const SOURCE_KINDS: readonly SourceKind[] = ['scrape', 'api', 'catalog', 'llm']
 
 /**
  * Canonical pricing shape. Every field is USD per 1,000,000 tokens unless

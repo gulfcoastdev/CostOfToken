@@ -34,6 +34,8 @@ export type AnomalyCode =
   // Anomaly shape is what lets verdicts ride the existing alert and run log.
   | 'arbiter_hold'
   | 'arbiter_note'
+  // 012: a recovery-judge report riding the same alert channel.
+  | 'llm_recovery'
 
 export type AnomalySeverity = 'warn' | 'block'
 
