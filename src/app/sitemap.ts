@@ -71,6 +71,20 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
         changeFrequency: 'daily' as const,
         priority: 0.8,
       },
+      // 014: the pages people search for by intent ("free llama api",
+      // "deepseek discount") — high priority, roster changes daily.
+      {
+        url: absoluteUrl('/free'),
+        lastModified: homeModified,
+        changeFrequency: 'daily' as const,
+        priority: 0.9,
+      },
+      {
+        url: absoluteUrl('/discounts'),
+        lastModified: homeModified,
+        changeFrequency: 'daily' as const,
+        priority: 0.8,
+      },
       ...COMPARISONS.map((pair) => ({
         url: absoluteUrl(`/compare/${pair.slug}`),
         lastModified: homeModified,
