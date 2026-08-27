@@ -699,3 +699,119 @@ test('the openrouter provider extractor ingests the whole catalogue as offers', 
   assert.equal(deepseek.pricing.outputPrice, 0.8)
   assert.equal(deepseek.pricing.sourceKind, 'api')
 })
+
+// ---------------------------------------------------------------------------
+// 011 C2: DeepInfra (public JSON API) and Together (server-rendered tables)
+// as router-type providers.
+// ---------------------------------------------------------------------------
+
+test('deepinfra ingests token-priced models from its public API', async () => {
+  const { deepinfraExtractor } = await import('../src/pipeline/extractors/deepinfra.ts')
+  const { readFile } = await import('node:fs/promises')
+  const fixture = await readFile(
+    new URL('./fixtures/deepinfra-models-2026-08-28.json', import.meta.url),
+    'utf8',
+  )
+
+  const models = await deepinfraExtractor.extract({ fetchText: async () => fixture })
+
+  assert.equal(deepinfraExtractor.providerSlug, 'deepinfra')
+  assert.ok(models.length >= 8, 'the text-generation entries are ingested')
+  // Only token-priced entries: image/video/speech rates are different units.
+  assert.ok(
+    models.every((m) => m.pricing.sourceKind === 'api'),
+    'api provenance',
+  )
+
+  const gemini = models.find((m) => m.modelId === 'google/gemini-3.7-flash')!
+  // cents_per_input_token 7.5e-05 -> $0.75 per 1M tokens.
+  assert.equal(gemini.pricing.inputPrice, 0.75)
+  assert.equal(gemini.pricing.outputPrice, 3.75)
+  // No cached multiplier published -> null, never zero.
+  assert.equal(gemini.pricing.cachedInputPrice, null)
+})
+
+test('deepinfra skips non-token pricing and deprecated models', async () => {
+  const { deepinfraExtractor } = await import('../src/pipeline/extractors/deepinfra.ts')
+  const catalogue = JSON.stringify([
+    {
+      model_name: 'x/image-model',
+      type: 'text-to-image',
+      pricing: { type: 'output_images', cents_per_output_image: 2 },
+    },
+    {
+      model_name: 'x/dead-model',
+      type: 'text-generation',
+      deprecated: 1712345678,
+      pricing: { type: 'tokens', cents_per_input_token: 1e-5, cents_per_output_token: 2e-5 },
+    },
+    {
+      model_name: 'x/live-model',
+      type: 'text-generation',
+      deprecated: null,
+      pricing: {
+        type: 'tokens',
+        cents_per_input_token: 1e-5,
+        cents_per_output_token: 2e-5,
+        rate_per_input_token_cached: 0.25,
+      },
+    },
+  ])
+
+  const models = await deepinfraExtractor.extract({ fetchText: async () => catalogue })
+  assert.deepEqual(
+    models.map((m) => m.modelId),
+    ['x/live-model'],
+  )
+  // The cached figure is a multiplier on input, not a price: 0.1 * 0.25.
+  assert.equal(models[0].pricing.inputPrice, 0.1)
+  assert.equal(models[0].pricing.cachedInputPrice, 0.025)
+})
+
+test('together parses its token-priced tables, splitting cached from input', async () => {
+  const { togetherExtractor } = await import('../src/pipeline/extractors/together.ts')
+  const md = [
+    '<html><body><table>',
+    '<tr><th>Model</th><th>Input</th><th>output</th></tr>',
+    '<tr><td>MiniMax M3</td><td>$0.30 $0.06 (cached)</td><td>$1.20</td></tr>',
+    '<tr><td>Llama 3.3 70B Instruct Turbo</td><td>$0.88</td><td>$0.88</td></tr>',
+    '</table><table>',
+    '<tr><th>Model</th><th>Price per mp</th><th>Price per iMAGE</th></tr>',
+    '<tr><td>Image Thing</td><td>$0.01</td><td>$0.02</td></tr>',
+    '</table><table>',
+    '<tr><th>Model</th><th>Price</th></tr>',
+    '<tr><td>Some Embedding</td><td>$0.02</td></tr>',
+    '</table></body></html>',
+  ].join('\n')
+
+  const models = await togetherExtractor.extract({ fetchText: async () => md })
+
+  assert.equal(togetherExtractor.providerSlug, 'together')
+  // Per-mp/per-image and single-price (non input/output) tables are not
+  // per-token chat rates and stay out.
+  assert.deepEqual(
+    models.map((m) => m.modelId).sort(),
+    ['llama-3.3-70b-instruct-turbo', 'minimax-m3'],
+  )
+  const minimax = models.find((m) => m.modelId === 'minimax-m3')!
+  assert.equal(minimax.pricing.inputPrice, 0.3)
+  assert.equal(minimax.pricing.cachedInputPrice, 0.06)
+  assert.equal(minimax.pricing.outputPrice, 1.2)
+  assert.equal(minimax.displayName, 'MiniMax M3')
+})
+
+test('together against the captured page yields a plausible catalogue', async () => {
+  const { togetherExtractor } = await import('../src/pipeline/extractors/together.ts')
+  const { readFile } = await import('node:fs/promises')
+  const fixture = await readFile(
+    new URL('./fixtures/together-pricing-2026-08-28.html', import.meta.url),
+    'utf8',
+  )
+
+  const models = await togetherExtractor.extract({ fetchText: async () => fixture })
+  assert.ok(models.length >= 20, `expected a real catalogue, got ${models.length}`)
+  assert.ok(
+    models.every((m) => m.pricing.inputPrice !== null || m.pricing.outputPrice !== null),
+    'every offer carries a price',
+  )
+})

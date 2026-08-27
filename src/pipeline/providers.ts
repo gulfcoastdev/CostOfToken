@@ -104,6 +104,23 @@ export const PROVIDERS: readonly ProviderDefinition[] = [
     region: 'global',
     providerType: 'router',
   },
+  {
+    slug: 'together',
+    name: 'Together AI',
+    website: 'https://www.together.ai',
+    pricingUrl: 'https://www.together.ai/pricing',
+    region: 'global',
+    providerType: 'router',
+  },
+  {
+    // Public unauthenticated JSON catalogue — see the extractor.
+    slug: 'deepinfra',
+    name: 'DeepInfra',
+    website: 'https://deepinfra.com',
+    pricingUrl: 'https://deepinfra.com/pricing',
+    region: 'global',
+    providerType: 'router',
+  },
 ] as const
 
 export const PROVIDER_BY_SLUG = new Map(PROVIDERS.map((p) => [p.slug, p]))

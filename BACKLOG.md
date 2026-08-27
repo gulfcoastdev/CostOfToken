@@ -13,9 +13,19 @@ Working roadmap. Ordered by priority, not by effort.
       (323 offers). `monitoring_events` records price_change / offer_added /
       offer_removed / cheapest_flip per run. NOT YET DEPLOYED — prod needs
       `npm run db:push -- --remote` before this code ships.
-- [ ] **Phase C2+: remaining adapters** — Together, Fireworks, Groq,
-      DeepInfra, Cerebras, Mistral, Cohere (source research each), then
-      Azure/Bedrock/Vertex as curated catalog sources with region qualifiers.
+- [ ] **Phase C2+: remaining adapters** — Together and DeepInfra DONE
+      (Together: server-rendered pricing tables, display-name slugs;
+      DeepInfra: public unauthenticated JSON at api.deepinfra.com/models/list
+      — 105 offers). Deferred after source research on 2026-08-28, each
+      needing an API key or headless rendering for a deterministic source:
+      - Groq: pricing page is fully client-fetched (54KB shell, no data).
+      - Fireworks: page tables cover only embeddings/training/GPU-hours;
+        serverless LLM rates are size-tiered prose.
+      - Mistral: /pricing is consumer plan tiers; API prices client-rendered.
+      - Cohere, Cerebras: no tables, no embedded price data found.
+      Options when picked up: authenticated models APIs (keys in env), or
+      the recovery judge pattern promoted to a curated 'llm'-source adapter.
+      Then Azure/Bedrock/Vertex as curated catalog sources with regions.
 - [ ] **Phase F: alert engine** — watchlist subscriptions (schema exists),
       event fan-out, weekly digest, unsubscribe route.
 - [ ] **Phase G: public API** — additive canonical/offers fields + new

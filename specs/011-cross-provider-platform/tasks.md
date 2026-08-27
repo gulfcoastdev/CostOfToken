@@ -36,10 +36,12 @@ A–E are this implementation pass; F–H are staged for follow-up passes.
       listing an offer with openrouter's prices/provenance; tests with a
       catalogue fixture. Existing deepseek/moonshot vendor adapters keep
       working (attribution debt retired in C2+).
-- [ ] T007 [US2] C2+ one task per remaining provider (Together, Fireworks,
-      Groq, DeepInfra, Cerebras, Mistral, Cohere; then Azure/Bedrock/Vertex
-      as curated catalog sources with regions) — EACH gets source research,
-      fixture, failing test, adapter. Staged follow-up; not this pass.
+- [ ] T007 [US2] C2+ adapters. DONE: Together (HTML tables fixture +
+      cached-cell split), DeepInfra (public JSON API, cents-per-token
+      conversion, deprecated filter). DEFERRED with research notes in
+      BACKLOG: Groq/Fireworks/Mistral/Cohere/Cerebras (no deterministic
+      public source found 2026-08-28), Azure/Bedrock/Vertex (curated
+      catalogs, own pass).
 
 ## Phase D: Comparison engine (US4)
 

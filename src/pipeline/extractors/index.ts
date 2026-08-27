@@ -1,8 +1,10 @@
 import { anthropicExtractor } from './anthropic.ts'
+import { deepinfraExtractor } from './deepinfra.ts'
 import { googleExtractor } from './google.ts'
 import { openaiExtractor } from './openai.ts'
 import { createOpenRouterExtractor, createOpenRouterProviderExtractor } from './openrouter.ts'
 import type { Extractor } from './types.ts'
+import { togetherExtractor } from './together.ts'
 import { xaiExtractor } from './xai.ts'
 import { zhipuExtractor } from './zhipu.ts'
 
@@ -43,7 +45,11 @@ const FIRST_PARTY_SLUGS = new Set(FIRST_PARTY_EXTRACTORS.map((e) => e.providerSl
  * 011: sellers in their own right — routers whose catalogue price is what
  * their customers actually pay, ingested as offers beside vendor prices.
  */
-const ROUTER_EXTRACTORS: readonly Extractor[] = [createOpenRouterProviderExtractor()]
+const ROUTER_EXTRACTORS: readonly Extractor[] = [
+  createOpenRouterProviderExtractor(),
+  togetherExtractor,
+  deepinfraExtractor,
+]
 
 export const ALL_EXTRACTORS: readonly Extractor[] = [
   ...FIRST_PARTY_EXTRACTORS,
