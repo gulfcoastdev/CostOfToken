@@ -887,3 +887,118 @@ export const getPromoOffers = cachedRead(getPromoOffersUncached, ['promo-offers'
   revalidate: 3600,
   tags: ['offers'],
 })
+
+/**
+ * 015 (home matrix): a few popular models as rows, sellers as columns.
+ *
+ * Columns are fixed: the vendor's own price ('first-party') plus the hosts
+ * that most often change the answer. Rows come from the curated featured
+ * list; a model only appears when at least two sellers price it — the
+ * matrix earns its place by showing a comparison, not a catalogue.
+ */
+export const MATRIX_COLUMNS = ['first-party', 'openrouter', 'together', 'deepinfra'] as const
+export type MatrixColumn = (typeof MATRIX_COLUMNS)[number]
+
+export interface MatrixCell {
+  providerSlug: string
+  modelId: string
+  inputPrice: number | null
+  outputPrice: number | null
+}
+
+export interface MatrixRow {
+  slug: string
+  displayName: string
+  cells: Partial<Record<MatrixColumn, MatrixCell>>
+  /** Which displayed column is cheapest at the headline workload. */
+  cheapest: MatrixColumn | null
+}
+
+async function getOfferMatrixUncached(slugs: string[]): Promise<MatrixRow[]> {
+  if (slugs.length === 0) return []
+  const { rankOffers } = await import('./offers.ts')
+  const { HEADLINE_WORKLOAD } = await import('@/pipeline/monitor.ts')
+
+  type MatrixOffer = import('./offers.ts').Offer & {
+    canonicalSlug: string
+    canonicalName: string
+  }
+  const offers = await sql<MatrixOffer[]>`
+    select cm.slug         as "canonicalSlug",
+           cm.display_name as "canonicalName",
+           p.slug          as "providerSlug",
+           p.name          as "providerName",
+           p.provider_type as "providerType",
+           m.model_id      as "modelId",
+           m.display_name  as "displayName",
+           m.offer_tier    as "offerTier",
+           m.offer_region  as "offerRegion",
+           m.price_layer   as "priceLayer",
+           m.promo_ends_at as "promoEndsAt",
+           pr.input_price  as "inputPrice",
+           pr.cached_input_price as "cachedInputPrice",
+           pr.output_price as "outputPrice"
+      from canonical_models cm
+      join models m on m.canonical_model_id = cm.id and m.is_active and m.offer_tier = 'standard'
+      join providers p on p.id = m.provider_id
+      left join prices pr on pr.model_id = m.id
+     where cm.slug = any(${slugs})
+  `
+
+  const bySlug = new Map<string, { name: string; offers: MatrixOffer[] }>()
+  for (const offer of offers) {
+    const group = bySlug.get(offer.canonicalSlug) ?? { name: offer.canonicalName, offers: [] }
+    group.offers.push(offer)
+    bySlug.set(offer.canonicalSlug, group)
+  }
+
+  const rows: MatrixRow[] = []
+  for (const slug of slugs) {
+    const group = bySlug.get(slug)
+    if (!group || group.offers.length < 2) continue
+
+    const cells: MatrixRow['cells'] = {}
+    const columnOf = (o: MatrixOffer): MatrixColumn | null =>
+      o.providerType === 'vendor'
+        ? 'first-party'
+        : (MATRIX_COLUMNS as readonly string[]).includes(o.providerSlug)
+          ? (o.providerSlug as MatrixColumn)
+          : null
+
+    for (const offer of group.offers) {
+      const column = columnOf(offer)
+      if (!column || cells[column]) continue
+      cells[column] = {
+        providerSlug: offer.providerSlug,
+        modelId: offer.modelId,
+        inputPrice: offer.inputPrice,
+        outputPrice: offer.outputPrice,
+      }
+    }
+    if (Object.keys(cells).length < 2) continue
+
+    // Cheapest among the DISPLAYED cells only — naming a hidden seller
+    // cheapest would make the matrix contradict itself.
+    const displayed = group.offers
+      .filter((o) => {
+        const c = columnOf(o)
+        return c !== null && cells[c]?.providerSlug === o.providerSlug
+      })
+      .map(({ canonicalSlug: _s, canonicalName: _n, ...offer }) => offer)
+    const best = rankOffers(displayed, HEADLINE_WORKLOAD).priced[0]
+    const bestOffer = best
+      ? group.offers.find(
+          (o) => o.providerSlug === best.offer.providerSlug && o.modelId === best.offer.modelId,
+        )
+      : undefined
+    const cheapest = bestOffer ? columnOf(bestOffer) : null
+
+    rows.push({ slug, displayName: group.name, cells, cheapest })
+  }
+  return rows
+}
+
+export const getOfferMatrix = cachedRead(getOfferMatrixUncached, ['offer-matrix'], {
+  revalidate: 3600,
+  tags: ['offers'],
+})

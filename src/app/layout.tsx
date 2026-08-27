@@ -94,6 +94,15 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         />
         {/* In the layout so every route carries the same navigation. */}
         <SiteNav />
+        {/* Operator-requested WIP banner (2026-08-29): the cross-provider
+            comparison relaunch is live but still growing. Remove when the
+            full version ships. */}
+        <div className="border-b border-amber-200 bg-amber-50 px-5 py-2 text-center text-[13px] text-amber-900">
+          <span aria-hidden="true">🚧</span> Fresh paint, wet floors — we&apos;re
+          rebuilding CostOfToken into a cross-provider price comparison.
+          Some corners are still under construction; the full version is
+          coming up soon. <span aria-hidden="true">🚀</span>
+        </div>
         {children}
         {/*
           The footer is here for the same reason the nav is, learned the hard

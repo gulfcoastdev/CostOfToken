@@ -161,3 +161,21 @@ describe('getModelOffers', { skip: hasDatabase ? false : 'no DATABASE_URL set' }
     assert.equal(await getModelOffers('openai', 'does-not-exist'), null)
   })
 })
+
+describe('getOfferMatrix', { skip: hasDatabase ? false : 'no DATABASE_URL set' }, () => {
+  test('featured canonicals become rows with per-seller cells, multi-seller only', async () => {
+    const { getOfferMatrix } = await import('../src/lib/queries.ts')
+
+    const rows = await getOfferMatrix(['deepseek-v4-pro', 'no-such-canonical', 'gpt-4-0613'])
+
+    // Unknown slugs and single-seller models are silently skipped — the
+    // matrix only earns its place where there is a comparison to show.
+    assert.equal(rows.length, 1)
+    const row = rows[0]
+    assert.equal(row.slug, 'deepseek-v4-pro')
+    assert.ok(row.cells['openrouter'], 'openrouter cell present')
+    assert.ok(row.cells['first-party'], 'vendor-direct cell present')
+    assert.ok(row.cells['first-party'].inputPrice !== undefined)
+    assert.ok(row.cheapest, 'a cheapest column is named')
+  })
+})

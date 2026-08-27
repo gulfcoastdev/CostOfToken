@@ -56,3 +56,14 @@ The row for the page's own provider is marked as the one being viewed.
 - Lives on the existing /models/{provider}/{model} pages — no new route;
   a dedicated canonical-model route can come with Phase G/H proper.
 - Chart/history-per-offer and calculator-over-offers are later H slices.
+
+## Amendment (2026-08-29, operator-directed)
+Home-page offer matrix ("main page should have a table that compares cost
+of model per provider… few providers as columns and input/output for each…
+few most popular models"): rows are the curated featured list (the honest
+popularity proxy this repo already uses), columns fixed to First-party /
+OpenRouter / Together AI / DeepInfra, cells input/output per 1M with the
+cheapest displayed cell highlighted. Rows appear only when >= 2 of the
+columns price the model. getOfferMatrix in queries.ts + OfferMatrix
+component; standard tier only; free/promo routes linked via /free and
+/discounts instead of crowding cells.

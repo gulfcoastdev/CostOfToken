@@ -3,7 +3,16 @@ import Link from 'next/link'
 import { PriceExplorer, type ExplorerRow } from '@/components/price-explorer.tsx'
 import { JsonLd } from '@/components/site-chrome.tsx'
 import { getBrand } from '@/lib/provider-brands.ts'
-import { getLastUpdated, getPriceTrends, getPrices, getProviders } from '@/lib/queries.ts'
+import { DEFAULT_FEATURED_MODEL_IDS } from '../../data/featured.ts'
+import { OfferMatrix } from '@/components/offer-matrix.tsx'
+import {
+  getLastUpdated,
+  getOfferMatrix,
+  getPrices,
+  getPriceTrends,
+  getProviders,
+  type MatrixRow,
+} from '@/lib/queries.ts'
 import {
   datasetSchema,
   faqSchema,
@@ -66,6 +75,7 @@ export default async function HomePage() {
   let providers: Array<{ slug: string; name: string }> = []
   let updatedAt: string | null = null
   let error: string | null = null
+  let matrix: MatrixRow[] = []
 
   try {
     /*
@@ -92,6 +102,7 @@ export default async function HomePage() {
     const providerRows = await getProviders()
     const lastUpdated = await getLastUpdated()
     const trends = await getPriceTrends()
+    matrix = await getOfferMatrix([...DEFAULT_FEATURED_MODEL_IDS])
 
     rows = page.rows.map((row) => ({ ...row, trend: trends.get(row.model_id) ?? null }))
     // Only offer providers that actually have models to show.
@@ -128,6 +139,28 @@ export default async function HomePage() {
         providerSlugs={providers.map((p) => p.slug)}
       />
       <div className="mx-auto max-w-[1120px] px-5 pb-14">
+        {matrix.length > 0 ? (
+          <section className="mb-10">
+            <h2 className="mb-1 text-xl font-semibold tracking-tight text-neutral-950">
+              Same model, different bill
+            </h2>
+            <p className="mb-3 max-w-3xl text-sm text-neutral-600">
+              Popular models priced by every seller we track, side by side —
+              USD per 1M tokens, standard tier. The cheapest door is
+              highlighted; click any price for that seller&apos;s page. Free
+              and promo routes live on{' '}
+              <Link href="/free" className="text-emerald-700 underline underline-offset-2">
+                /free
+              </Link>{' '}
+              and{' '}
+              <Link href="/discounts" className="text-emerald-700 underline underline-offset-2">
+                /discounts
+              </Link>
+              .
+            </p>
+            <OfferMatrix rows={matrix} />
+          </section>
+        ) : null}
         <ProviderLinks providers={providers} />
         <HomeFaq />
         {/*
