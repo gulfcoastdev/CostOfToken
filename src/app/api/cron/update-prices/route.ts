@@ -10,15 +10,19 @@ import { runPipeline } from '@/pipeline/run.ts'
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 /**
- * Ten providers fetched sequentially complete in about 4 seconds, so 60 is
- * generous — and 60 is the ceiling on Vercel's Hobby plan, so this deploys
- * anywhere. Raise it if you add many more providers; paid plans allow more.
+ * 60 was generous when ten providers finished in ~4s. The platform work
+ * (013/014-era) made it the outage: OpenRouter's full catalogue, Together,
+ * DeepInfra, canonical resolution, monitoring, and LLM judge calls that can
+ * legitimately take up to 60s alone pushed a run to 1–4 minutes, so Vercel
+ * killed the cron at 60s before it could log a single provider — prod
+ * silently stopped updating on 2026-08-27. 300 is the ceiling Vercel's
+ * Fluid compute allows on every plan today.
  *
- * Running out of time is survivable by design: providers are written one at a
- * time, so a truncated run leaves the ones already processed updated and the
- * rest on their last known-good prices until tomorrow.
+ * Running out of time is survivable by design: providers are written one at
+ * a time, so a truncated run leaves the ones already processed updated and
+ * the rest on their last known-good prices until tomorrow.
  */
-export const maxDuration = 60
+export const maxDuration = 300
 
 /**
  * POST|GET /api/cron/update-prices
