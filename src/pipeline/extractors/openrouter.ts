@@ -145,7 +145,11 @@ export function createOpenRouterProviderExtractor(): Extractor {
         // Floating "latest" aliases repoint silently; a row that changes
         // identity under a stable id would corrupt its price history.
         if (entry.id.startsWith('~')) continue
-        if (isRoutingTier(entry.id)) continue
+        // 014: :free is a real door people hunt for — a first-class offer,
+        // parked in the free tier so $0 never enters the paid ranking.
+        // :batch stays out: async billing on the same door, not a door.
+        if (/:batch$/i.test(entry.id)) continue
+        const isFree = /:free$/i.test(entry.id)
 
         const input = perTokenToPerMillion(entry.pricing?.prompt)
         const output = perTokenToPerMillion(entry.pricing?.completion)
@@ -166,6 +170,8 @@ export function createOpenRouterProviderExtractor(): Extractor {
           modality,
           tags: [...tags].sort(),
           isActive: true,
+          offerTier: isFree ? 'free' : 'standard',
+          priceLayer: isFree ? 'free' : 'list',
           pricing: {
             inputPrice: input,
             cachedInputPrice: perTokenToPerMillion(entry.pricing?.input_cache_read),

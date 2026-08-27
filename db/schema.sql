@@ -450,3 +450,19 @@ alter table source_structures enable row level security;
 alter table prices drop constraint if exists prices_source_kind_check;
 alter table prices add constraint prices_source_kind_check
   check (source_kind in ('scrape', 'api', 'catalog', 'llm'));
+
+-- ---------------------------------------------------------------------------
+-- 014: routes and free doors — price layers on offers.
+--
+-- 'list' is what the seller publishes as its ordinary price; 'promo' is a
+-- seller-declared discount (never inferred from a low number); 'free' is a
+-- $0 route (:free variants), which lives outside the paid comparison
+-- entirely. The two layers must never collapse into one column — that is
+-- the difference between a price and a screenshot.
+-- ---------------------------------------------------------------------------
+
+alter table models add column if not exists price_layer text not null default 'list';
+alter table models drop constraint if exists models_price_layer_check;
+alter table models add constraint models_price_layer_check
+  check (price_layer in ('list', 'promo', 'free'));
+alter table models add column if not exists promo_ends_at timestamptz;

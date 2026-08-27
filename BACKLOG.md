@@ -26,8 +26,13 @@ Working roadmap. Ordered by priority, not by effort.
       Options when picked up: authenticated models APIs (keys in env), or
       the recovery judge pattern promoted to a curated 'llm'-source adapter.
       Then Azure/Bedrock/Vertex as curated catalog sources with regions.
-- [ ] **Phase F: alert engine** — watchlist subscriptions (schema exists),
-      event fan-out, weekly digest, unsubscribe route.
+- [ ] **Phase F: alert engine** — DEFERRED by operator 2026-08-28 ("it can
+      wait"). Watchlist subscriptions (schema already exists), event
+      fan-out from monitoring_events (price-drop + provider-switch
+      emails), weekly digest, signed unsubscribe route. Everything it
+      needs is already accumulating: monitoring_events has been recording
+      price_change/offer_added/offer_removed/cheapest_flip per run since
+      the 011 deploy, so alerts can backfill context from day one.
 - [ ] **Phase G: public API** — additive canonical/offers fields + new
       endpoints; /api/v1 stays byte-compatible.
 - [ ] **Phase H: web app** — canonical model pages with offer tables,
@@ -48,6 +53,15 @@ Working roadmap. Ordered by priority, not by effort.
       GitHub poster (or chain email + issue), add a fine-grained
       GITHUB_TOKEN (Issues: read/write on this repo) + optional
       GITHUB_REPO to Vercel, and restore the two vars in .env.example.
+- [ ] **Routes/free-doors follow-ups (spec 014)** — shipped: :free routes
+      as free-tier offers (own strip, never in paid ranking), declared
+      promos with deadlines, /free and /discounts pages. Deferred:
+      per-door rate limits and no-train/ZDR retention flags (a real buying
+      criterion, no machine-readable source — needs curated data);
+      diffing OpenRouter's discounted-models collection page for promos
+      beyond declared fields; per-model "no free door" empty states on
+      canonical pages (Phase H proper); tokenizer/cache-parity beyond the
+      caveat copy.
 - [ ] **Resolver review flow** — 71 unlinked long-tail offers (aion-labs,
       ibm-granite, bytedance-seed, …); extend VENDOR_PREFIXES or add
       aliases after human review; consider a `resolve:review` script like

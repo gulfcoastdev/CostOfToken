@@ -145,6 +145,8 @@ export async function cheapestByCanonical(canonicalIds: string[]): Promise<Cheap
            m.display_name  as "displayName",
            m.offer_tier    as "offerTier",
            m.offer_region  as "offerRegion",
+           m.price_layer   as "priceLayer",
+           m.promo_ends_at as "promoEndsAt",
            pr.input_price        as "inputPrice",
            pr.cached_input_price as "cachedInputPrice",
            pr.output_price       as "outputPrice"

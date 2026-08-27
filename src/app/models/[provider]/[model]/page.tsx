@@ -2,11 +2,12 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { MODEL_TYPE_LABELS, SOURCE_LABELS } from '@/components/provider-colors.ts'
+import { OfferComparison } from '@/components/offer-comparison.tsx'
 import { Breadcrumbs, JsonLd, PageShell, PriceStat } from '@/components/site-chrome.tsx'
 import { compareHref, modelKey } from '@/lib/compare.ts'
 import { formatContext, formatPrice } from '@/lib/format.ts'
 import { getBrand } from '@/lib/provider-brands.ts'
-import { getHistory, getModelForProvider, getProviderModels } from '@/lib/queries.ts'
+import { getHistory, getModelForProvider, getModelOffers, getProviderModels } from '@/lib/queries.ts'
 import {
   absoluteUrl,
   breadcrumbSchema,
@@ -108,6 +109,8 @@ export default async function ModelPage({
   // Sequential: concurrent reads sharing one database connection deadlock.
   const siblings = await getProviderModels(row.provider).catch((): PriceRowV1[] => [])
   const history = await getHistory(row.model_id, 12).catch((): HistoryPointV1[] => [])
+  // 013: every seller of this model's canonical identity; null unless >= 2.
+  const modelOffers = await getModelOffers(row.provider, row.model_id).catch(() => null)
 
   const cheaper = siblings.filter(
     (s) =>
@@ -323,6 +326,20 @@ export default async function ModelPage({
           )}
         </div>
       </section>
+
+      {modelOffers ? (
+        <section className="mb-8">
+          <h2 className="mb-3 text-xl font-semibold tracking-tight text-neutral-950">
+            {modelOffers.displayName} across providers
+          </h2>
+          <p className="mb-3 text-sm text-neutral-600">
+            The same model, priced by every seller we track. Ranked by the cost
+            of 1M input + 1M output tokens, standard tier; savings measured
+            against buying from the vendor directly.
+          </p>
+          <OfferComparison offers={modelOffers.offers} viewedProvider={row.provider} />
+        </section>
+      ) : null}
 
       <section className="mb-8">
         <h2 className="mb-3 text-xl font-semibold tracking-tight text-neutral-950">

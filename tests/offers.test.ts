@@ -18,6 +18,8 @@ function offer(partial: Partial<Offer> & { providerSlug: string }): Offer {
     displayName: partial.displayName ?? 'm',
     offerTier: partial.offerTier ?? 'standard',
     offerRegion: partial.offerRegion ?? null,
+    priceLayer: partial.priceLayer ?? 'list',
+    promoEndsAt: partial.promoEndsAt ?? null,
     inputPrice: partial.inputPrice ?? null,
     outputPrice: partial.outputPrice ?? null,
     cachedInputPrice: partial.cachedInputPrice ?? null,
@@ -42,6 +44,9 @@ test('non-standard tiers never compete for cheapest', () => {
   const offers = [
     offer({ providerSlug: 'vendor', inputPrice: 4, outputPrice: 16 }),
     offer({ providerSlug: 'batchy', offerTier: 'batch', inputPrice: 1, outputPrice: 4 }),
+    // 014: a $0 free route is parked in its own strip — it must never crush
+    // the paid ranking or trigger cheapest-flips.
+    offer({ providerSlug: 'freedoor', offerTier: 'free', inputPrice: 0, outputPrice: 0 }),
   ]
   assert.equal(cheapestOffer(offers, WORKLOAD)?.offer.providerSlug, 'vendor')
 })
@@ -108,4 +113,51 @@ test('equal-cost offers rank deterministically: vendor first, then slug', () => 
     ranked.priced.map((p) => p.offer.providerSlug),
     ['vendor', 'arouter', 'zrouter'],
   )
+})
+
+// --- getModelOffers (DB-backed, 013) ---------------------------------------
+
+import { after, before, describe } from 'node:test'
+import { loadEnv } from '../scripts/load-env.ts'
+
+loadEnv()
+process.env.NEXT_PUBLIC_SITE_URL ??= 'https://example.test'
+const hasDatabase = Boolean(process.env.DATABASE_URL || process.env.POSTGRES_URL)
+
+describe('getModelOffers', { skip: hasDatabase ? false : 'no DATABASE_URL set' }, () => {
+  let sql: typeof import('../src/lib/db.ts').sql
+  let closeDb: () => Promise<void>
+
+  before(async () => {
+    ;({ sql, closeDb } = await import('../src/lib/db.ts'))
+  })
+
+  after(async () => {
+    await closeDb()
+  })
+
+  test('a multi-seller model returns every active offer of its canonical', async () => {
+    const { getModelOffers } = await import('../src/lib/queries.ts')
+
+    // deepseek-v4-pro is sold by deepseek + openrouter (+ more) in the
+    // local catalogue built by the pipeline.
+    const result = await getModelOffers('deepseek', 'deepseek-v4-pro')
+
+    assert.ok(result, 'the viewed model is linked to a canonical')
+    assert.ok(result.offers.length >= 2, `expected multi-seller, got ${result.offers.length}`)
+    const sellers = result.offers.map((o) => o.providerSlug)
+    assert.ok(sellers.includes('deepseek') && sellers.includes('openrouter'))
+    assert.ok(
+      result.offers.every((o) => o.inputPrice !== undefined),
+      'offers carry the price shape',
+    )
+  })
+
+  test('a single-offer or unlinked model returns null (no empty section)', async () => {
+    const { getModelOffers } = await import('../src/lib/queries.ts')
+
+    // A dated legacy snapshot only OpenAI sells.
+    assert.equal(await getModelOffers('openai', 'gpt-4-0613'), null)
+    assert.equal(await getModelOffers('openai', 'does-not-exist'), null)
+  })
 })

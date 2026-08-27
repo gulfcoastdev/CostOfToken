@@ -147,6 +147,14 @@ export interface NormalizedModel {
   offerTier?: string
   offerRegion?: string | null
   /**
+   * 014: 'list' (seller's ordinary price), 'promo' (seller-DECLARED
+   * discount — never inferred from a low number), 'free' ($0 routes,
+   * excluded from paid comparison entirely).
+   */
+  priceLayer?: 'list' | 'promo' | 'free'
+  /** Seller-declared promo deadline, when one is published. */
+  promoEndsAt?: string | null
+  /**
    * Adapter's canonical-identity hint (e.g. a router that publishes the
    * upstream id). The resolver verifies hints with the same rules as
    * anything else — a hint is evidence, not authority.

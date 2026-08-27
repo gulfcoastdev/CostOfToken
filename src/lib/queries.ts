@@ -705,3 +705,185 @@ function toPriceRow(record: PriceRecord): PriceRowV1 {
     updated_at: record.updated_at ? record.updated_at.toISOString() : null,
   }
 }
+
+/** 013: everything needed to compare a model's sellers on its page. */
+export interface ModelOffersView {
+  canonicalSlug: string
+  displayName: string
+  offers: import('./offers.ts').Offer[]
+}
+
+async function getModelOffersUncached(
+  providerSlug: string,
+  modelId: string,
+): Promise<ModelOffersView | null> {
+  const rows = await sql<
+    Array<
+      import('./offers.ts').Offer & { canonicalSlug: string; canonicalName: string }
+    >
+  >`
+    select cm.slug          as "canonicalSlug",
+           cm.display_name  as "canonicalName",
+           p.slug           as "providerSlug",
+           p.name           as "providerName",
+           p.provider_type  as "providerType",
+           m.model_id       as "modelId",
+           m.display_name   as "displayName",
+           m.offer_tier     as "offerTier",
+           m.offer_region   as "offerRegion",
+           m.price_layer    as "priceLayer",
+           m.promo_ends_at  as "promoEndsAt",
+           pr.input_price        as "inputPrice",
+           pr.cached_input_price as "cachedInputPrice",
+           pr.output_price       as "outputPrice"
+      from models viewed
+      join providers vp on vp.id = viewed.provider_id and vp.slug = ${providerSlug}
+      join canonical_models cm on cm.id = viewed.canonical_model_id
+      join models m on m.canonical_model_id = cm.id and m.is_active
+      join providers p on p.id = m.provider_id
+      left join prices pr on pr.model_id = m.id
+     where viewed.model_id = ${modelId}
+       and viewed.is_active
+  `
+  // Fewer than two sellers means there is nothing to compare — the page
+  // renders exactly as it did before offers existed.
+  if (rows.length < 2) return null
+
+  return {
+    canonicalSlug: rows[0].canonicalSlug,
+    displayName: rows[0].canonicalName,
+    offers: rows.map(({ canonicalSlug: _s, canonicalName: _n, ...offer }) => offer),
+  }
+}
+
+export const getModelOffers = cachedRead(getModelOffersUncached, ['model-offers'], {
+  revalidate: 3600,
+  tags: ['offers'],
+})
+
+/** 014: a free route with the cheapest paid fallback for its model. */
+export interface FreeRouteView {
+  canonicalSlug: string
+  canonicalName: string
+  providerSlug: string
+  providerName: string
+  modelId: string
+  contextWindow: number | null
+  lastChecked: string | null
+  fallback: {
+    providerSlug: string
+    providerName: string
+    modelId: string
+    inputPrice: number | null
+    outputPrice: number | null
+  } | null
+}
+
+async function getFreeRoutesUncached(): Promise<FreeRouteView[]> {
+  const rows = await sql<
+    Array<{
+      canonicalId: string
+      canonicalSlug: string
+      canonicalName: string
+      providerSlug: string
+      providerName: string
+      modelId: string
+      contextWindow: number | null
+      lastChecked: string | null
+    }>
+  >`
+    select cm.id            as "canonicalId",
+           cm.slug          as "canonicalSlug",
+           cm.display_name  as "canonicalName",
+           p.slug           as "providerSlug",
+           p.name           as "providerName",
+           m.model_id       as "modelId",
+           m.context_window as "contextWindow",
+           to_char(m.updated_at, 'YYYY-MM-DD') as "lastChecked"
+      from models m
+      join providers p on p.id = m.provider_id
+      left join canonical_models cm on cm.id = m.canonical_model_id
+     where m.is_active and m.offer_tier = 'free'
+     order by cm.slug nulls last, p.slug
+  `
+
+  // Cheapest paid fallback per canonical, via the one comparison engine.
+  const { rankOffers, getOffersForCanonical } = await import('./offers.ts')
+  const { HEADLINE_WORKLOAD } = await import('@/pipeline/monitor.ts')
+  const result: FreeRouteView[] = []
+  const fallbackBySlug = new Map<string, FreeRouteView['fallback']>()
+
+  for (const row of rows) {
+    let fallback: FreeRouteView['fallback'] = null
+    if (row.canonicalSlug) {
+      if (!fallbackBySlug.has(row.canonicalSlug)) {
+        // Sequential reads by construction (one loop, one connection).
+        const offers = await getOffersForCanonical(row.canonicalSlug)
+        const cheapest = rankOffers(offers, HEADLINE_WORKLOAD).priced[0]
+        fallbackBySlug.set(
+          row.canonicalSlug,
+          cheapest
+            ? {
+                providerSlug: cheapest.offer.providerSlug,
+                providerName: cheapest.offer.providerName,
+                modelId: cheapest.offer.modelId,
+                inputPrice: cheapest.offer.inputPrice,
+                outputPrice: cheapest.offer.outputPrice,
+              }
+            : null,
+        )
+      }
+      fallback = fallbackBySlug.get(row.canonicalSlug) ?? null
+    }
+    result.push({
+      canonicalSlug: row.canonicalSlug ?? row.modelId,
+      canonicalName: row.canonicalName ?? row.modelId,
+      providerSlug: row.providerSlug,
+      providerName: row.providerName,
+      modelId: row.modelId,
+      contextWindow: row.contextWindow,
+      lastChecked: row.lastChecked,
+      fallback,
+    })
+  }
+  return result
+}
+
+export const getFreeRoutes = cachedRead(getFreeRoutesUncached, ['free-routes'], {
+  revalidate: 3600,
+  tags: ['offers'],
+})
+
+/** 014: seller-declared promos currently in effect. */
+export interface PromoOfferView {
+  providerSlug: string
+  providerName: string
+  modelId: string
+  displayName: string
+  inputPrice: number | null
+  outputPrice: number | null
+  promoEndsAt: string | null
+}
+
+async function getPromoOffersUncached(): Promise<PromoOfferView[]> {
+  return await sql<PromoOfferView[]>`
+    select p.slug         as "providerSlug",
+           p.name         as "providerName",
+           m.model_id     as "modelId",
+           m.display_name as "displayName",
+           pr.input_price  as "inputPrice",
+           pr.output_price as "outputPrice",
+           to_char(m.promo_ends_at, 'YYYY-MM-DD') as "promoEndsAt"
+      from models m
+      join providers p on p.id = m.provider_id
+      left join prices pr on pr.model_id = m.id
+     where m.is_active and m.price_layer = 'promo'
+       and (m.promo_ends_at is null or m.promo_ends_at > now())
+     order by m.promo_ends_at asc nulls last, p.slug, m.model_id
+  `
+}
+
+export const getPromoOffers = cachedRead(getPromoOffersUncached, ['promo-offers'], {
+  revalidate: 3600,
+  tags: ['offers'],
+})

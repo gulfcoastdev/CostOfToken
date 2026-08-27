@@ -19,8 +19,14 @@ export function providerColor(slug: string): string {
 /** How a price row was obtained, in the user's language. */
 export const SOURCE_LABELS: Record<string, string> = {
   scrape: 'First-party',
-  api: 'Via OpenRouter',
+  // Was "Via OpenRouter" when OpenRouter fallbacks were the only api rows;
+  // DeepInfra's own catalogue made that label wrong. The linked source URL
+  // on each row says which API.
+  api: 'Provider API',
   catalog: 'Catalog',
+  // 012: derived by the recovery judge from the fetched page when the
+  // parser broke — the least-trusted source, and labelled as such.
+  llm: 'LLM-derived',
 }
 
 /**

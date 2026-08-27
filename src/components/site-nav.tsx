@@ -14,6 +14,8 @@ const LINKS: Array<{ href: string; label: string; accent?: boolean }> = [
   { href: '/models', label: 'Models' },
   { href: '/providers', label: 'Providers' },
   { href: '/compare', label: 'Compare' },
+  { href: '/free', label: 'Free' },
+  { href: '/discounts', label: 'Discounts' },
   { href: '/calculator', label: 'Calculator', accent: true },
   { href: '/about', label: 'About' },
   { href: '/api-docs', label: 'API' },

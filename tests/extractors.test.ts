@@ -679,7 +679,8 @@ test('the openrouter provider extractor ingests the whole catalogue as offers', 
         name: 'Meta: Llama 3.3 70B Instruct',
         pricing: { prompt: '0.0000001', completion: '0.0000002' },
       },
-      // Routing tiers are billing routes, not models — still excluded.
+      // 014 amended: :free is now a first-class free-tier offer (a door
+      // people hunt for); :batch remains excluded (billing route).
       { id: 'deepseek/deepseek-v4-pro:free', pricing: { prompt: '0', completion: '0' } },
       { id: 'deepseek/deepseek-v4-pro:batch', pricing: { prompt: '0.0000002', completion: '0.0000004' } },
     ],
@@ -692,7 +693,11 @@ test('the openrouter provider extractor ingests the whole catalogue as offers', 
   const ids = models.map((m) => m.modelId).sort()
   // Full OpenRouter ids are the offer's model id — that is what an
   // OpenRouter customer types; identity linking is the resolver's job.
-  assert.deepEqual(ids, ['deepseek/deepseek-v4-pro', 'meta-llama/llama-3.3-70b-instruct'])
+  assert.deepEqual(ids, [
+    'deepseek/deepseek-v4-pro',
+    'deepseek/deepseek-v4-pro:free',
+    'meta-llama/llama-3.3-70b-instruct',
+  ])
 
   const deepseek = models.find((m) => m.modelId === 'deepseek/deepseek-v4-pro')!
   assert.equal(deepseek.pricing.inputPrice, 0.4)
@@ -814,4 +819,94 @@ test('together against the captured page yields a plausible catalogue', async ()
     models.every((m) => m.pricing.inputPrice !== null || m.pricing.outputPrice !== null),
     'every offer carries a price',
   )
+})
+
+// ---------------------------------------------------------------------------
+// 014: routes are rows. :free variants become free-tier offers on the
+// router provider; declared discounts become promo-layered offers.
+// ---------------------------------------------------------------------------
+
+test('openrouter ingests :free routes as free-tier offers, never :batch', async () => {
+  const { createOpenRouterProviderExtractor } = await import(
+    '../src/pipeline/extractors/openrouter.ts'
+  )
+  resetOpenRouterCache()
+  const catalogue = {
+    data: [
+      { id: 'deepseek/deepseek-v4-pro', pricing: { prompt: '0.0000004', completion: '0.0000008' } },
+      { id: 'deepseek/deepseek-v4-pro:free', pricing: { prompt: '0', completion: '0' } },
+      { id: 'deepseek/deepseek-v4-pro:batch', pricing: { prompt: '0.0000002', completion: '0.0000004' } },
+    ],
+  }
+
+  const models = await createOpenRouterProviderExtractor().extract({
+    fetchText: async () => JSON.stringify(catalogue),
+  })
+
+  const free = models.find((m) => m.modelId === 'deepseek/deepseek-v4-pro:free')
+  assert.ok(free, ':free routes are first-class offers now')
+  assert.equal(free.offerTier, 'free')
+  assert.equal(free.priceLayer, 'free')
+  // Zero is the real price of the free door, not a missing value.
+  assert.equal(free.pricing.inputPrice, 0)
+  const paid = models.find((m) => m.modelId === 'deepseek/deepseek-v4-pro')!
+  assert.equal(paid.offerTier ?? 'standard', 'standard')
+  assert.ok(
+    !models.some((m) => m.modelId.endsWith(':batch')),
+    'batch is a billing route, still excluded',
+  )
+})
+
+test('vendor fallbacks via openrouter still skip :free twins', async () => {
+  resetOpenRouterCache()
+  const catalogue = {
+    data: [
+      { id: 'deepseek/deepseek-v4-pro', pricing: { prompt: '0.0000004', completion: '0.0000008' } },
+      { id: 'deepseek/deepseek-v4-pro:free', pricing: { prompt: '0', completion: '0' } },
+    ],
+  }
+  const { createOpenRouterExtractor } = await import('../src/pipeline/extractors/openrouter.ts')
+  const models = await createOpenRouterExtractor('deepseek', ['deepseek']).extract({
+    fetchText: async () => JSON.stringify(catalogue),
+  })
+  assert.deepEqual(models.map((m) => m.modelId), ['deepseek-v4-pro'])
+})
+
+test('deepinfra marks declared discounts as promo, and only those', async () => {
+  const { deepinfraExtractor } = await import('../src/pipeline/extractors/deepinfra.ts')
+  const future = new Date(Date.now() + 86_400_000).toISOString()
+  const past = new Date(Date.now() - 86_400_000).toISOString()
+  const catalogue = JSON.stringify([
+    {
+      model_name: 'x/discounted',
+      type: 'text-generation',
+      pricing: { type: 'tokens', cents_per_input_token: 1e-5, cents_per_output_token: 2e-5, discount: 0.5, discount_ends_at: future },
+    },
+    {
+      model_name: 'x/discount-no-date',
+      type: 'text-generation',
+      pricing: { type: 'tokens', cents_per_input_token: 1e-5, cents_per_output_token: 2e-5, discount: 0.675 },
+    },
+    {
+      model_name: 'x/expired-promo',
+      type: 'text-generation',
+      pricing: { type: 'tokens', cents_per_input_token: 1e-5, cents_per_output_token: 2e-5, discount: 0.5, discount_ends_at: past },
+    },
+    {
+      model_name: 'x/plain',
+      type: 'text-generation',
+      pricing: { type: 'tokens', cents_per_input_token: 1e-5, cents_per_output_token: 2e-5 },
+    },
+  ])
+
+  const models = await deepinfraExtractor.extract({ fetchText: async () => catalogue })
+  const byId = new Map(models.map((m) => [m.modelId, m]))
+
+  assert.equal(byId.get('x/discounted')?.priceLayer, 'promo')
+  assert.equal(byId.get('x/discounted')?.promoEndsAt, future)
+  assert.equal(byId.get('x/discount-no-date')?.priceLayer, 'promo')
+  assert.equal(byId.get('x/discount-no-date')?.promoEndsAt ?? null, null)
+  // The source's own dates decide: an expired declaration is not a promo.
+  assert.equal(byId.get('x/expired-promo')?.priceLayer ?? 'list', 'list')
+  assert.equal(byId.get('x/plain')?.priceLayer ?? 'list', 'list')
 })

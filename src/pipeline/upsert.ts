@@ -97,6 +97,8 @@ export async function upsertProviderModels(
           is_active: m.isActive,
           offer_tier: m.offerTier ?? 'standard',
           offer_region: m.offerRegion ?? null,
+          price_layer: m.priceLayer ?? 'list',
+          promo_ends_at: m.promoEndsAt ?? null,
           model_type: m.classification?.modelType ?? null,
           classification_status: m.classification?.status ?? 'needs_review',
           classification_source: m.classification?.source ?? null,
@@ -121,6 +123,8 @@ export async function upsertProviderModels(
         is_active              = excluded.is_active,
         offer_tier             = excluded.offer_tier,
         offer_region           = excluded.offer_region,
+        price_layer            = excluded.price_layer,
+        promo_ends_at          = excluded.promo_ends_at,
         -- A human decision outranks anything the rules produce. Without these
         -- guards a nightly run would quietly undo the review work that the
         -- classifier's refusal to guess made necessary in the first place.

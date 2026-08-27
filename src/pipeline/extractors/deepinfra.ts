@@ -27,7 +27,27 @@ interface DeepInfraModel {
     cents_per_input_token?: number
     cents_per_output_token?: number
     rate_per_input_token_cached?: number | null
+    /** Declared discount multiplier; the one price set is the charged one. */
+    discount?: number | null
+    discount_ends_at?: string | null
   }
+}
+
+/**
+ * 014: promo only when the seller DECLARES it, and only while the seller's
+ * own end date (if any) is in the future. A low price is never inferred to
+ * be a promotion.
+ */
+function promoLayer(pricing: NonNullable<DeepInfraModel['pricing']>): {
+  priceLayer: 'list' | 'promo'
+  promoEndsAt: string | null
+} {
+  if (typeof pricing.discount !== 'number' || pricing.discount <= 0) {
+    return { priceLayer: 'list', promoEndsAt: null }
+  }
+  const ends = pricing.discount_ends_at ?? null
+  if (ends && Date.parse(ends) <= Date.now()) return { priceLayer: 'list', promoEndsAt: null }
+  return { priceLayer: 'promo', promoEndsAt: ends }
 }
 
 /** cents/token → USD per 1M tokens, rounded to the numeric(12,6) column. */
@@ -64,6 +84,8 @@ export const deepinfraExtractor: Extractor = {
           ? Math.round(input * cachedRate * 1e6) / 1e6
           : null
 
+      const { priceLayer, promoEndsAt } = promoLayer(entry.pricing)
+
       models.set(modelId, {
         providerSlug: 'deepinfra',
         modelId,
@@ -75,6 +97,8 @@ export const deepinfraExtractor: Extractor = {
         modality: inferModality(modelId),
         tags: inferTags(modelId),
         isActive: true,
+        priceLayer,
+        promoEndsAt,
         pricing: {
           inputPrice: input,
           cachedInputPrice: cached,

@@ -14,7 +14,10 @@
  * ingested OpenRouter catalogue.
  */
 export function judgeModel(): string {
-  return process.env.ARBITER_MODEL || 'deepseek/deepseek-v4-pro'
+  // Operator's pick (2026-08-28): the Flash snapshot — fast and cheap, and
+  // judging tables is not frontier work. Pinned snapshot over the rolling
+  // id so the judge does not change under us.
+  return process.env.ARBITER_MODEL || 'deepseek/deepseek-v4-flash-0731'
 }
 
 export function hasJudgeKey(): boolean {
